@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Sulco · Player de música local</title>
+<meta name="description" content="Player de músicas locais, elegante e minimalista, com biblioteca inteligente, temas personalizáveis e visual inspirado em vinil." />
+
+<!-- Essenciais da PWA -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0b0b0e" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Sulco" />
+<link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+<link rel="icon" href="assets/icons/icon-192.png" />
+
+<!-- Fontes: carregadas uma única vez; trocar entre elas em Ajustes só muda para
+     qual delas a variável CSS --font-display aponta (veja theme.js / style.css) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Poppins:wght@400;500;600&family=Playfair+Display:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="style.css" />
+
+<!--
+  O jsmediatags lê tags ID3 (MP3), MP4/M4A e FLAC diretamente no navegador.
+  É carregado como um <script> global clássico (não um import de módulo ES)
+  porque vem empacotado como um bundle UMD que se conecta em
+  `window.jsmediatags`, em vez de expor um módulo ES - veja readTags() em
+  library.js para como ele é usado, e a seção "Dependências externas" do
+  README.md para o motivo desta ser a única exceção à abordagem "JavaScript
+  puro".
+-->
+<script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js" defer></script>
+</head>
+<body>
+
+  <!-- ================= TELA DE ABERTURA / CARREGAMENTO ================= -->
+  <div id="splash-screen" aria-hidden="true">
+    <div class="splash-vinyl">
+      <div class="splash-disc"></div>
+      <div class="splash-tonearm"></div>
+    </div>
+    <div class="splash-word">Sulco</div>
+    <div class="splash-sub">preparando sua biblioteca…</div>
+  </div>
+
+  <!-- ================= ESTRUTURA DO APP ================= -->
+  <div id="app" hidden>
+
+    <main id="view-container">
+
+      <!-- ---------- INÍCIO ---------- -->
+      <section class="view" id="view-home" data-view="home">
+        <header class="top-bar">
+          <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Sulco</div>
+          <button class="btn-icon" id="btn-open-settings" title="Ajustes" aria-label="Abrir ajustes">⚙</button>
+        </header>
+
+        <button class="search-shortcut" id="btn-goto-search">
+          <span aria-hidden="true">⌕</span> Buscar músicas, artistas, álbuns…
+        </button>
+
+        <div id="home-empty-state" class="empty-state" hidden>
+          <p>Sua biblioteca está vazia.</p>
+          <p class="empty-state-sub">Adicione uma pasta de músicas em Ajustes para começar.</p>
+          <button class="btn-primary" id="btn-empty-goto-settings">Adicionar pasta</button>
+        </div>
+
+        <div id="home-content">
+          <section class="home-hero" id="home-hero" hidden>
+            <img id="home-hero-cover" class="home-hero-cover" alt="" />
+            <div class="home-hero-info">
+              <span class="home-hero-label">Tocando agora</span>
+              <span class="home-hero-title" id="home-hero-title"></span>
+              <span class="home-hero-artist" id="home-hero-artist"></span>
+            </div>
+            <button class="btn-icon home-hero-play" id="home-hero-playpause" aria-label="Reproduzir/Pausar">▶</button>
+          </section>
+
+          <section class="home-row" id="row-recents">
+            <h2>Recentes</h2>
+            <div class="hscroll" id="home-recents-row"></div>
+          </section>
+
+          <section class="home-row" id="row-favorites">
+            <h2>Favoritos</h2>
+            <div class="hscroll" id="home-favorites-row"></div>
+          </section>
+
+          <section class="home-row" id="row-mostplayed">
+            <h2>Mais tocadas</h2>
+            <div class="hscroll" id="home-mostplayed-row"></div>
+          </section>
+
+          <section class="home-row" id="row-playlists">
+            <h2>Playlists <button class="link-btn" id="home-see-all-playlists">ver todas</button></h2>
+            <div class="hscroll" id="home-playlists-row"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ---------- BUSCAR ---------- -->
+      <section class="view" id="view-search" data-view="search">
+        <header class="top-bar">
+          <div class="search-field">
+            <span aria-hidden="true">⌕</span>
+            <input type="text" id="search-input" placeholder="Buscar por título, artista ou álbum" autocomplete="off" />
+          </div>
+        </header>
+        <div id="search-empty" class="empty-state">
+          <p>Digite para buscar na sua biblioteca.</p>
+        </div>
+        <div id="search-results" class="track-list"></div>
+      </section>
+
+      <!-- ---------- BIBLIOTECA ---------- -->
+      <section class="view" id="view-library" data-view="library">
+        <header class="top-bar">
+          <h1 class="view-title">Biblioteca</h1>
+          <select id="library-sort" aria-label="Ordenar por">
+            <option value="title">Nome</option>
+            <option value="artist">Artista</option>
+            <option value="album">Álbum</option>
+            <option value="dateAdded">Adicionadas recentemente</option>
+            <option value="duration">Duração</option>
+          </select>
+        </header>
+        <div class="chip-row" id="library-filter-chips">
+          <button class="chip active" data-filter="all">Todas</button>
+          <button class="chip" data-filter="favorites">Favoritas</button>
+          <button class="chip" data-filter="mostplayed">Mais tocadas</button>
+        </div>
+        <div id="library-list" class="track-list"></div>
+      </section>
+
+      <!-- ---------- PLAYLISTS ---------- -->
+      <section class="view" id="view-playlists" data-view="playlists">
+        <header class="top-bar">
+          <h1 class="view-title">Playlists</h1>
+          <button class="btn-icon" id="btn-create-playlist" aria-label="Criar playlist">+</button>
+        </header>
+        <div id="playlists-grid" class="card-grid"></div>
+      </section>
+
+      <!-- ---------- DETALHE DA PLAYLIST ---------- -->
+      <section class="view" id="view-playlist-detail" data-view="playlist-detail">
+        <header class="top-bar">
+          <button class="btn-icon" id="btn-back-from-playlist" aria-label="Voltar">←</button>
+          <h1 class="view-title" id="playlist-detail-title">Playlist</h1>
+          <button class="btn-icon" id="btn-rename-playlist" aria-label="Renomear">✎</button>
+          <button class="btn-icon" id="btn-delete-playlist" aria-label="Excluir">🗑</button>
+        </header>
+        <div class="playlist-detail-actions">
+          <button class="btn-primary" id="btn-play-playlist">▶ Tocar tudo</button>
+          <button class="btn-secondary" id="btn-shuffle-playlist">⤨ Aleatório</button>
+        </div>
+        <div id="playlist-detail-list" class="track-list"></div>
+      </section>
+
+      <!-- ---------- AJUSTES ---------- -->
+      <section class="view" id="view-settings" data-view="settings">
+        <header class="top-bar">
+          <h1 class="view-title">Ajustes</h1>
+        </header>
+
+        <section class="settings-section">
+          <h2>Pastas de música</h2>
+          <p class="settings-hint">Apenas as pastas escolhidas aqui aparecem na biblioteca - o app nunca lê o armazenamento inteiro do aparelho.</p>
+          <p class="settings-hint" id="folder-support-note"></p>
+          <div id="folder-list"></div>
+          <p class="scan-progress" id="folder-scan-progress"></p>
+          <button class="btn-primary" id="btn-add-folder">+ Adicionar pasta</button>
+          <input type="file" id="input-folder-fallback" webkitdirectory multiple hidden />
+        </section>
+
+        <section class="settings-section">
+          <h2>Aparência</h2>
+          <div class="theme-options" id="theme-options">
+            <button class="theme-option" data-theme="dark">Escuro</button>
+            <button class="theme-option" data-theme="light">Claro</button>
+            <button class="theme-option" data-theme="amoled">AMOLED</button>
+            <button class="theme-option" data-theme="custom">Personalizado</button>
+          </div>
+
+          <div id="custom-colors-panel" class="custom-colors-panel" hidden>
+            <label>Fundo <input type="color" id="color-bg" /></label>
+            <label>Fundo elevado <input type="color" id="color-bg-elevated" /></label>
+            <label>Superfície <input type="color" id="color-surface" /></label>
+            <label>Texto <input type="color" id="color-text" /></label>
+            <label>Texto secundário <input type="color" id="color-text-muted" /></label>
+            <label>Cor principal <input type="color" id="color-accent" /></label>
+            <label>Cor secundária <input type="color" id="color-accent-2" /></label>
+          </div>
+
+          <label class="settings-field">Fonte
+            <select id="select-font">
+              <option value="Sora">Sora</option>
+              <option value="Inter">Inter</option>
+              <option value="Poppins">Poppins</option>
+              <option value="Playfair Display">Playfair Display</option>
+              <option value="JetBrains Mono">JetBrains Mono</option>
+              <option value="system">Sistema</option>
+            </select>
+          </label>
+
+          <label class="settings-field">Raio das bordas
+            <input type="range" id="range-radius" min="0" max="32" step="1" />
+          </label>
+
+          <label class="settings-field">Tamanho dos cartões
+            <select id="select-card-size">
+              <option value="compact">Compacto</option>
+              <option value="medium">Médio</option>
+              <option value="large">Grande</option>
+            </select>
+          </label>
+
+          <label class="settings-field">Velocidade das animações
+            <input type="range" id="range-anim-speed" min="0.5" max="1.5" step="0.1" />
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <h2>Reprodução</h2>
+          <label class="settings-field">
+            Transição entre faixas
+            <input type="range" id="range-crossfade" min="0" max="12" step="0.5" />
+          </label>
+          <p class="settings-hint" id="crossfade-label"></p>
+
+          <label class="settings-field">
+            Velocidade de reprodução
+            <input type="range" id="range-playback-rate" min="0.5" max="2" step="0.05" />
+          </label>
+          <p class="settings-hint" id="rate-label"></p>
+
+          <div class="eq-header">
+            <span>Equalizador</span>
+            <label class="switch"><input type="checkbox" id="eq-toggle" /><span class="switch-track"></span></label>
+          </div>
+          <select id="eq-preset-select"></select>
+          <div id="eq-bands-container" class="eq-bands"></div>
+        </section>
+
+        <section class="settings-section">
+          <h2>Sobre e limitações do navegador</h2>
+          <p class="settings-hint">
+            Sulco é 100% local: nenhuma música é enviada para qualquer servidor.
+            Por serem limitações das próprias plataformas (não do app), vale saber:
+          </p>
+          <ul class="limitations-list">
+            <li><strong>Pastas persistentes:</strong> só navegadores baseados em Chromium no desktop conseguem lembrar uma pasta escolhida entre sessões. No Android e em outros navegadores, toque em "Reconectar" ao reabrir o app.</li>
+            <li><strong>Cor da notificação:</strong> o Android decide sozinho a cor de destaque da notificação/tela de bloqueio a partir da capa - um site não pode sobrescrever isso, só o tema dentro do próprio app.</li>
+            <li><strong>Reprodução em segundo plano:</strong> se o sistema encerrar a aba por economia de energia, a reprodução para - isso também afeta apps instalados via navegador, diferente de apps nativos.</li>
+          </ul>
+          <p class="settings-hint">Versão 1.0.0 · consulte o README.md do projeto para a documentação técnica completa.</p>
+          <button class="btn-secondary" id="btn-install-app" hidden>⇩ Instalar aplicativo</button>
+        </section>
+      </section>
+
+    </main>
+
+    <!-- ================= MINI PLAYER ================= -->
+    <div id="mini-player" class="mini-player" hidden>
+      <div class="mini-progress-track"><div class="mini-progress-fill" id="mini-progress-fill"></div></div>
+      <div class="mini-player-inner">
+        <img id="mini-cover" class="mini-cover" alt="" />
+        <div class="mini-info">
+          <span class="mini-title" id="mini-title"></span>
+          <span class="mini-artist" id="mini-artist"></span>
+        </div>
+        <button class="btn-icon" id="mini-playpause" aria-label="Reproduzir/Pausar">▶</button>
+        <button class="btn-icon" id="mini-next" aria-label="Próxima">⏭</button>
+      </div>
+    </div>
+
+    <!-- ================= NAVEGAÇÃO INFERIOR ================= -->
+    <nav id="bottom-nav" class="bottom-nav">
+      <button class="nav-btn active" data-view="home"><span class="nav-icon">⌂</span>Início</button>
+      <button class="nav-btn" data-view="search"><span class="nav-icon">⌕</span>Buscar</button>
+      <button class="nav-btn" data-view="library"><span class="nav-icon">▤</span>Biblioteca</button>
+      <button class="nav-btn" data-view="playlists"><span class="nav-icon">☰</span>Playlists</button>
+      <button class="nav-btn" data-view="settings"><span class="nav-icon">⚙</span>Ajustes</button>
+    </nav>
+
+    <!-- ================= TOCANDO AGORA (tela cheia) ================= -->
+    <div id="now-playing" class="now-playing" aria-hidden="true">
+      <div class="now-playing-bg" id="now-playing-bg"></div>
+      <div class="now-playing-content">
+        <header class="np-header">
+          <button class="btn-icon" id="btn-collapse-now-playing" aria-label="Minimizar">︾</button>
+          <span class="np-header-label">Tocando de</span>
+          <button class="btn-icon" id="btn-now-playing-more" aria-label="Mais opções">⋯</button>
+        </header>
+
+        <div class="vinyl-stage">
+          <div class="vinyl-disc" id="vinyl-disc"></div>
+          <div class="cover-frame">
+            <img id="now-playing-cover" class="cover-art" alt="" />
+          </div>
+        </div>
+
+        <div class="np-meta">
+          <div class="np-titles">
+            <span class="np-title" id="np-title">—</span>
+            <span class="np-artist" id="np-artist">—</span>
+          </div>
+          <button class="btn-icon np-favorite" id="np-favorite" aria-label="Favoritar">♡</button>
+        </div>
+
+        <div class="np-progress-row">
+          <span class="np-time" id="np-current-time">0:00</span>
+          <input type="range" id="np-progress" class="np-progress" min="0" max="1000" value="0" />
+          <span class="np-time" id="np-remaining-time">-0:00</span>
+        </div>
+
+        <div class="np-controls">
+          <button class="btn-icon np-shuffle" id="np-shuffle" aria-label="Aleatório">⤨</button>
+          <button class="btn-icon np-side" id="np-prev" aria-label="Anterior">⏮</button>
+          <button class="btn-play-big" id="np-playpause" aria-label="Reproduzir/Pausar">▶</button>
+          <button class="btn-icon np-side" id="np-next" aria-label="Próxima">⏭</button>
+          <button class="btn-icon np-repeat" id="np-repeat" aria-label="Repetir">⟲</button>
+        </div>
+
+        <div class="np-secondary-row">
+          <span class="np-vol-icon" aria-hidden="true">🔊</span>
+          <input type="range" id="np-volume" class="np-volume" min="0" max="1" step="0.01" />
+          <button class="btn-icon" id="np-queue-btn" aria-label="Fila de reprodução">☰</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- Sheet da fila ---------- -->
+    <div class="sheet" id="queue-sheet" hidden>
+      <div class="sheet-handle"></div>
+      <h3>Fila de reprodução</h3>
+      <div id="queue-list" class="track-list"></div>
+    </div>
+
+    <!-- ---------- Sheet de mais opções (sleep timer / repetição A-B) ---------- -->
+    <div class="sheet" id="more-sheet" hidden>
+      <div class="sheet-handle"></div>
+      <h3>Mais opções</h3>
+
+      <div class="sheet-group">
+        <span class="sheet-group-title">Sleep timer</span>
+        <div class="chip-row" id="sleep-timer-options">
+          <button class="chip" data-min="5">5 min</button>
+          <button class="chip" data-min="15">15 min</button>
+          <button class="chip" data-min="30">30 min</button>
+          <button class="chip" data-min="60">60 min</button>
+          <button class="chip" data-min="track">Fim da faixa</button>
+          <button class="chip" data-min="cancel">Cancelar</button>
+        </div>
+        <p class="settings-hint" id="sleep-timer-status"></p>
+      </div>
+
+      <div class="sheet-group">
+        <span class="sheet-group-title">Repetição A-B</span>
+        <div class="chip-row">
+          <button class="chip" id="btn-set-a">Marcar A</button>
+          <button class="chip" id="btn-set-b">Marcar B</button>
+          <button class="chip" id="btn-clear-ab">Limpar</button>
+        </div>
+        <p class="settings-hint" id="ab-repeat-status"></p>
+      </div>
+    </div>
+
+    <!-- ---------- Sheet de ações da faixa ---------- -->
+    <div class="sheet" id="track-action-sheet" hidden>
+      <div class="sheet-handle"></div>
+      <h3 id="track-action-title">Faixa</h3>
+      <button class="sheet-action" id="action-play-now">▶ Tocar agora</button>
+      <button class="sheet-action" id="action-play-next">⤵ Tocar a seguir</button>
+      <button class="sheet-action" id="action-toggle-favorite">♡ Favoritar</button>
+      <span class="sheet-group-title">Adicionar à playlist</span>
+      <div id="action-playlist-list"></div>
+      <button class="sheet-action" id="action-new-playlist">+ Nova playlist</button>
+    </div>
+
+    <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+  </div>
+
+  <!-- ================= MÓDULOS (os módulos ES carregam na ordem de dependência automaticamente) ================= -->
+  <script type="module" src="script.js"></script>
+</body>
+</html>
