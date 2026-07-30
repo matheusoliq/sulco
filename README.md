@@ -1,8 +1,8 @@
 # Sulco 🎵 — player de músicas locais
 
-Um player de música **100% local**, instalável como PWA, com visual inspirado no Spotify mas com identidade própria: um disco de vinil que gira atrás da capa do álbum na tela "Tocando agora", gradientes extraídos das cores da própria capa, e um sistema completo de temas.
+Um player de música **100% local**, instalável como PWA, com visual limpo e elegante no estilo Spotify: capa do álbum em destaque na tela "Tocando agora", cor de destaque do app inteiro calculada automaticamente a partir das cores dessa capa, e biblioteca inteligente com pastas escolhidas manualmente.
 
-Não existe backend, não existe streaming, nenhuma música sai do seu aparelho. Tudo — biblioteca, favoritos, playlists, tema — é lido e salvo localmente no navegador.
+Não existe backend, não existe streaming, nenhuma música sai do seu aparelho. Tudo — biblioteca, favoritos, playlists, aparência — é lido e salvo localmente no navegador.
 
 ---
 
@@ -18,7 +18,7 @@ Não existe backend, não existe streaming, nenhuma música sai do seu aparelho.
 8. [Como funciona o Service Worker](#como-funciona-o-service-worker)
 9. [Limitações do navegador (leitura importante)](#limitações-do-navegador-leitura-importante)
 10. [Personalizar o app](#personalizar-o-app)
-    - [Trocar cores / temas](#trocar-cores--temas)
+    - [Sobre a cor de destaque (por que não é manual)](#sobre-a-cor-de-destaque-por-que-não-é-manual)
     - [Trocar fontes](#trocar-fontes)
     - [Editar animações](#editar-animações)
     - [Alterar o layout](#alterar-o-layout)
@@ -32,7 +32,7 @@ Não existe backend, não existe streaming, nenhuma música sai do seu aparelho.
 
 ## Como o projeto funciona
 
-Em uma frase: você aponta o app para pastas específicas do seu armazenamento, ele lê os arquivos de áudio e as tags ID3 de cada um, monta uma biblioteca local (guardada no IndexedDB do navegador), e toca tudo através de um player com equalizador, crossfade, fila, playlists e uma tela "Tocando agora" com disco de vinil giratório.
+Em uma frase: você aponta o app para pastas específicas do seu armazenamento, ele lê os arquivos de áudio e as tags ID3 de cada um, monta uma biblioteca local (guardada no IndexedDB do navegador), e toca tudo através de um player com equalizador, crossfade, fila e playlists - com a cor de destaque da interface mudando automaticamente conforme a capa da música tocando.
 
 Fluxo de dados, em alto nível:
 
@@ -46,19 +46,24 @@ library.js varre a pasta, lê tags ID3 com jsmediatags
 Cada faixa vira um registro { título, artista, álbum, capa, duração, ... }
         │
         ▼
-storage.js salva tudo no IndexedDB (não salva o áudio em si, só metadados + capa)
+storage.js salva tudo no IndexedDB (metadados + capa; e também o áudio em
+si, quando o navegador não sabe manter a pasta "conectada" sozinho - veja
+"Limitações do navegador" mais abaixo)
         │
         ▼
 script.js renderiza Início / Buscar / Biblioteca / Playlists a partir dessa lista
         │
         ▼
-Ao tocar uma faixa, player.js pega o arquivo real (File) e cria um Blob URL
+Ao tocar uma faixa, player.js pega o arquivo (ao vivo ou do cache) e cria um Blob URL
         │
         ▼
 Web Audio API (equalizador, crossfade) + Media Session API (notificação/bloqueio)
+        │
+        ▼
+utils.js extrai a paleta de cor da capa -> theme.js aplica como cor de destaque do app inteiro
 ```
 
-Nenhum arquivo de áudio é copiado, comprimido ou enviado a lugar nenhum — o app sempre toca diretamente o arquivo original que está no seu armazenamento.
+Nenhum arquivo de áudio é enviado para qualquer lugar - tudo acontece dentro do próprio navegador.
 
 ---
 
@@ -71,18 +76,17 @@ sulco/
 ├── script.js             # Ponto de entrada: inicialização, navegação, renderização das listas
 ├── player.js              # Motor de áudio: fila, Web Audio, equalizador, crossfade, Media Session
 ├── library.js              # Pastas, varredura de arquivos, leitura de tags ID3, busca/ordenação
-├── settings.js              # Lógica da tela de Ajustes (pastas, tema, aparência, reprodução)
-├── theme.js                  # Aplica temas (escuro/claro/AMOLED/personalizado) via CSS variables
+├── settings.js              # Lógica da tela de Ajustes (pastas, aparência, reprodução)
+├── theme.js                  # Aplica o tema de fundo e a cor de destaque automática via CSS variables
 ├── storage.js                  # Camada IndexedDB + localStorage usada por todo o resto
 ├── utils.js                     # Funções auxiliares (formatação de tempo, paleta de cores, busca)
+├── icons.js                      # Conjunto de ícones SVG usados em toda a interface
 ├── service-worker.js             # Cache do "app shell" para funcionamento 100% offline
 ├── manifest.json                  # Manifesto da PWA (ícones, cores, atalhos)
 ├── generate_assets.py              # Script auxiliar (não faz parte do app) usado para gerar os PNGs abaixo
 └── assets/
     ├── icons/     # Ícones do app em vários tamanhos + versões "maskable" para Android
-    ├── vinyl/     # Textura do disco de vinil usado na tela "Tocando agora"
-    ├── images/    # Capa padrão usada quando uma faixa não tem capa incorporada
-    └── fonts/     # (vazio por padrão - as fontes são carregadas do Google Fonts, veja abaixo)
+    └── images/    # Capa padrão usada quando uma faixa não tem capa incorporada
 ```
 
 Cada arquivo `.js` é um [módulo ES nativo](https://developer.mozilla.org/pt-BR/docs/Web/JavaScript/Guide/Modules) (`import`/`export`) — não há bundler, não há build step. `index.html` carrega apenas `script.js` como `<script type="module">`, e o próprio navegador resolve os `import` dos outros arquivos.
@@ -169,7 +173,7 @@ Esses handlers chamam de volta os mesmos métodos públicos de `Player` (`play()
 
 `service-worker.js` guarda em cache os arquivos do próprio app (HTML/CSS/JS/ícones) na instalação (`install`), e responde a requisições `fetch` com estratégias diferentes dependendo do tipo de recurso (veja os comentários no topo do arquivo para o detalhe de cada estratégia: cache-first para o app shell, network-first para navegação, stale-while-revalidate para fontes/CDN).
 
-Ele **não** armazena nenhum arquivo de música - áudio nunca passa por uma requisição de rede nesta arquitetura (é lido do disco via File System Access API / `<input webkitdirectory>` e tocado via Blob URL), então não há nada de música para o Service Worker interceptar.
+Ele **não** armazena nenhum arquivo de música vindo da rede - a cópia de áudio que o app eventualmente guarda para pastas "manuais" (veja a seção de limitações abaixo) passa pelo IndexedDB via `library.js`, não pelo Service Worker, então esse cache continua pequeno independentemente do tamanho da sua biblioteca.
 
 Ao alterar qualquer arquivo do "app shell", lembre de subir o número em `CACHE_VERSION` no topo do arquivo, senão usuários que já instalaram o app continuam vendo a versão antiga em cache.
 
@@ -177,18 +181,28 @@ Ao alterar qualquer arquivo do "app shell", lembre de subir o número em `CACHE_
 
 ## Limitações do navegador (leitura importante)
 
-Estas são restrições impostas pelas próprias plataformas/navegadores, não decisões de design deste projeto. Elas foram documentadas e uma alternativa moderna foi implementada para cada uma:
+Estas são restrições impostas pelas próprias plataformas/navegadores, não decisões de design deste projeto. Elas foram documentadas e a melhor alternativa possível foi implementada para cada uma:
 
-### 1. Pastas persistentes entre sessões
+### 1. Pastas de música sempre acessíveis, sem reconectar
 
-A [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API) (`showDirectoryPicker()`) permite guardar um "handle" para uma pasta e reabri-la automaticamente depois, sem o usuário escolher de novo. **Só existe em navegadores baseados em Chromium no desktop** (Chrome, Edge, Opera) — não existe no Chrome para Android, nem no Firefox ou Safari em nenhuma plataforma.
+A [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API) (`showDirectoryPicker()`) permite guardar um "handle" para uma pasta e reabri-la automaticamente depois, sem o usuário escolher de novo. **Só existe em navegadores baseados em Chromium no desktop** (Chrome, Edge, Opera) — não existe no Chrome para Android, nem no Firefox ou Safari em nenhuma plataforma. Isso por si só obrigaria a pessoa a reconectar a pasta toda vez que abrisse o app no celular, o que é bastante cansativo para quem só quer ouvir música.
 
-- **Onde funciona (desktop Chromium):** `library.js` guarda o handle no IndexedDB e, a cada abertura do app, verifica a permissão (`queryPermission`) e re-varre a pasta automaticamente.
-- **Onde não funciona (Android, Firefox, Safari):** o app usa `<input type="file" webkitdirectory multiple>` como alternativa. Essa API só devolve uma lista de arquivos daquele instante - o navegador não permite guardar isso para a próxima sessão. **O usuário precisa tocar em "Reconectar" em Ajustes ao reabrir o app antes de conseguir tocar músicas daquela pasta.** Para minimizar o impacto: todos os metadados (título, artista, capa, favoritos, playlists) continuam funcionando instantaneamente a partir do cache local - só a reprodução em si exige a reconexão.
+Para resolver isso de verdade (não só documentar a limitação), o app usa estratégias diferentes conforme o navegador:
 
-### 2. Cor da notificação/tela de bloqueio
+- **Onde existe handle persistente (desktop Chromium):** `library.js` guarda o handle no IndexedDB e, a cada abertura do app, verifica a permissão (`queryPermission`) e re-varre a pasta automaticamente - sem duplicar nenhum dado, o app sempre lê o arquivo original.
+- **Onde não existe (Android, Firefox, Safari - o caso mais comum para quem usa o app no celular):** ao adicionar a pasta pela primeira vez (via `<input type="file" webkitdirectory>`), o app copia os bytes de cada arquivo de áudio para o próprio armazenamento interno (IndexedDB, store `audioData`). A partir daí, tocar qualquer faixa já conhecida **nunca mais depende de escolher a pasta de novo** - o botão "Atualizar" em Ajustes só é necessário quando você quiser que o app detecte músicas novas que foram colocadas na pasta depois.
 
-No Android 13+, o próprio sistema extrai uma cor de destaque da capa do álbum para colorir a notificação de mídia - isso é feito pelo Android/Chrome internamente (algo parecido com a `Palette` API nativa do Android) e **uma página web não tem nenhuma API para sobrescrever essa cor diretamente**. O que o app pode controlar - e controla - é a cor da barra de status/navegador (`<meta name="theme-color">`, atualizada pelo `theme.js`) e o gradiente de fundo dentro da própria tela "Tocando agora" (calculado em `utils.js` via `extractPalette()`, lendo os pixels da capa em um `<canvas>` local).
+O custo dessa solução é espaço em disco: para pastas "manuais", o áudio fica guardado duas vezes (uma no armazenamento normal do aparelho, outra dentro do app). Para uma biblioteca pessoal de música isso costuma ser um trade-off tranquilo, já que os navegadores concedem uma cota de armazenamento generosa por site (e o app chama `navigator.storage.persist()` ao adicionar a pasta, pedindo ao navegador para não apagar esse cache sob pressão de espaço).
+
+### 2. A notificação/tela de bloqueio não pode ser customizada pelo app
+
+Este é um limite que **nenhum site consegue contornar**: quem desenha a notificação de mídia do Android (e a tela de bloqueio) é sempre o navegador (Chrome), não a página web. A [Media Session API](https://developer.mozilla.org/pt-BR/docs/Web/API/Media_Session_API) permite ao app fornecer *dados* (título, artista, álbum, uma imagem de capa estática, e os botões de ação) - o app **não** consegue:
+
+- Substituir a notificação por uma interface própria com sua marca.
+- Animar qualquer coisa dentro dela (por isso não existe nenhum disco girando ali - a capa mostrada é sempre uma imagem parada).
+- Escolher a cor de destaque da notificação: no Android 13+, é o próprio sistema quem extrai uma cor a partir da capa (parecido com a `Palette` API nativa do Android), de forma automática e fora do controle da página.
+
+Fazer uma notificação totalmente customizada exigiria empacotar o app como nativo (ex: Capacitor/Trusted Web Activity com um serviço em primeiro plano próprio), o que sai do escopo "HTML/CSS/JS puro" deste projeto. O que o app faz, dentro do que é possível: garante que título/artista/capa cheguem certos na notificação, e usa a mesma extração de cor da capa (`utils.js -> extractPalette()`) para colorir a experiência *dentro do próprio app* - a barra de status do navegador (via `<meta name="theme-color">`) e toda a interface, através de `theme.js`.
 
 ### 3. Reprodução em segundo plano
 
@@ -196,26 +210,30 @@ Um PWA instalado via navegador não tem um "serviço em primeiro plano" nativo c
 
 ### 4. Gapless playback "perfeito"
 
-O app tenta reprodução sem intervalo (`crossfadeSeconds = 0` nas configurações) usando dois elementos `<audio>` alternados: o próximo é pré-carregado e trocado no instante em que o atual termina. Isso funciona bem na prática, mas **não é garantidamente preciso à amostra** como seria decodificando o áudio inteiro antecipadamente com `decodeAudioData` + `AudioBufferSourceNode`. Optamos por manter o `<audio>` element (que faz streaming direto do disco) em vez de decodificar tudo antes de tocar, porque isso escalaria mal para arquivos grandes (sets longos, audiobooks) — ver [Ideias de melhorias futuras](#ideias-de-melhorias-futuras).
+O app tenta reprodução sem intervalo (`crossfadeSeconds = 0` nas configurações) usando dois elementos `<audio>` alternados: o próximo é pré-carregado e trocado no instante em que o atual termina. Isso funciona bem na prática, mas **não é garantidamente preciso à amostra** como seria decodificando o áudio inteiro antecipadamente com `decodeAudioData` + `AudioBufferSourceNode`. Optamos por manter o `<audio>` element (que faz streaming direto do disco/cache) em vez de decodificar tudo antes de tocar, porque isso escalaria mal para arquivos grandes (sets longos, audiobooks) — ver [Ideias de melhorias futuras](#ideias-de-melhorias-futuras).
 
 ---
 
 ## Personalizar o app
 
-### Trocar cores / temas
+### Sobre a cor de destaque (por que não é manual)
 
-Tudo passa por variáveis CSS definidas em `theme.js` (dicionário `PRESETS`) e aplicadas em `document.documentElement`. Para mudar a paleta padrão do tema escuro, por exemplo, edite os valores em `PRESETS.dark` em `theme.js`:
+De propósito, o app **não** tem um seletor de cor manual. A cor de destaque (`--accent`/`--accent-2`, usada em botões, realces, barra de progresso etc.) é sempre calculada a partir da capa da faixa que está tocando, em `utils.js -> extractPalette()`, e aplicada globalmente por `theme.js -> applyAccentFromPalette()` toda vez que uma faixa nova carrega (veja `script.js -> renderNowPlayingTrack`). A ideia é a pessoa nunca precisar "configurar uma cor" - o app reflete a música.
+
+O que **é** configurável em Ajustes → Aparência é só o tema de fundo (Escuro / Claro / AMOLED), a fonte, o raio das bordas, o tamanho dos cartões e a velocidade das animações - nada relacionado a cor de destaque.
+
+Se você quiser reintroduzir um seletor de cor manual (por exemplo, para um uso diferente deste projeto), o ponto de partida é `theme.js`: adicione de volta um método `setCustomColors()` parecido com `applyAccentFromPalette()`, mas persistindo o valor em vez de recalculá-lo a cada faixa.
+
+Para mudar a paleta *padrão* de cada tema de fundo (usada antes de qualquer música tocar), edite o dicionário `PRESETS` em `theme.js`:
 
 ```js
 dark: {
   '--bg': '#0b0b0e',
-  '--accent': '#e3a857',   // troque aqui para mudar a cor principal
-  '--accent-2': '#7c6fcb', // e aqui para a cor secundária
+  '--accent': '#e3a857',   // cor de destaque padrão, só usada até a 1ª faixa tocar
+  '--accent-2': '#7c6fcb',
   // ...
 }
 ```
-
-O tema "Personalizado" já expõe essas mesmas variáveis como seletores de cor dentro do próprio app (Ajustes → Aparência), sem precisar editar código.
 
 ### Trocar fontes
 
@@ -227,14 +245,14 @@ As fontes disponíveis são carregadas de uma vez no `<head>` de `index.html` (u
 
 ### Editar animações
 
-A maioria das transições usa a variável `--anim-speed` (controlada pelo slider "Velocidade das animações" em Ajustes), assim: `transition: transform calc(300ms / var(--anim-speed)) ease;`. Para mudar a curva de uma animação específica (por exemplo, a rotação do vinil), procure por `@keyframes spin` em `style.css`.
+A maioria das transições usa a variável `--anim-speed` (controlada pelo slider "Velocidade das animações" em Ajustes), assim: `transition: transform calc(300ms / var(--anim-speed)) ease;`. Para mudar a animação de entrada da capa na tela "Tocando agora", procure por `@keyframes cover-in` em `style.css`.
 
 ### Alterar o layout
 
 O layout inteiro é feito com CSS normal (flexbox/grid), sem framework. As seções mais prováveis de mexer:
 
 - `.bottom-nav` / `.nav-btn` — a barra de navegação inferior.
-- `.now-playing-content`, `.vinyl-stage` — a tela "Tocando agora".
+- `.now-playing-content`, `.np-cover-stage` — a tela "Tocando agora".
 - `.home-row`, `.hcard` — os carrosséis horizontais da tela inicial.
 
 ### Adicionar novos módulos
@@ -246,8 +264,11 @@ Como cada arquivo é um módulo ES normal, adicionar um novo é só criar `meu-m
 ## Decisões técnicas e por quê
 
 - **Sem framework/bundler:** o pedido original era "apenas HTML, CSS e JavaScript puro". ES Modules nativos dão organização em arquivos separados sem precisar de Webpack/Vite - o único custo é precisar de um servidor HTTP mesmo em desenvolvimento (ver [Instalar e executar](#instalar-e-executar)).
-- **IndexedDB em vez de localStorage para a biblioteca:** localStorage é síncrono, só guarda strings, e tem um limite baixo (~5MB) - inviável para uma biblioteca com capas de álbum embutidas. IndexedDB é assíncrono, aceita Blobs nativamente e tem uma cota de armazenamento muito maior.
-- **Duplo `<audio>` element em vez de decodificar tudo em Web Audio:** garante que arquivos grandes tocam via streaming direto do disco (baixo uso de memória), ao custo de gapless não ser 100% sample-accurate - ver limitação #4 acima.
+- **IndexedDB em vez de localStorage para a biblioteca:** localStorage é síncrono, só guarda strings, e tem um limite baixo (~5MB) - inviável para uma biblioteca com capas de álbum embutidas (e, agora, com cópias de áudio em cache). IndexedDB é assíncrono, aceita Blobs nativamente e tem uma cota de armazenamento muito maior.
+- **Copiar o áudio para o IndexedDB em navegadores sem pasta persistente:** o custo é espaço em disco duplicado, mas é a diferença entre "funciona sempre" e "pede a pasta de novo toda hora" - ver limitação #1 no capítulo anterior.
+- **Duplo `<audio>` element em vez de decodificar tudo em Web Audio:** garante que arquivos grandes tocam via streaming direto do disco/cache (baixo uso de memória), ao custo de gapless não ser 100% sample-accurate - ver limitação #4 acima.
+- **Ícones SVG próprios (`icons.js`) em vez de emojis/Unicode:** emojis renderizam de forma inconsistente (e muitas vezes feia) entre aparelhos e fontes de sistema; um pequeno conjunto de ícones SVG com `currentColor` garante consistência visual e já acompanha a cor de destaque automática.
+- **Cor de destaque automática em vez de um seletor manual:** menos uma decisão para a pessoa tomar - o app já reflete a identidade visual da música tocando.
 - **jsmediatags como única dependência externa:** é a única peça que exigiria reimplementar um parser binário de ID3/MP4 do zero para ganhar pouco - todo o resto do app é JavaScript sem dependências.
 
 ---
@@ -257,11 +278,12 @@ Como cada arquivo é um módulo ES normal, adicionar um novo é só criar `meu-m
 Ordem sugerida de leitura, da peça mais isolada para a mais "conectada":
 
 1. `utils.js` — funções puras, sem estado, mais fáceis de entender isoladas.
-2. `storage.js` — como os dados são salvos (IndexedDB + localStorage).
-3. `theme.js` — como uma configuração vira estilo visual.
-4. `library.js` — o coração da biblioteca: pastas, arquivos, tags.
-5. `player.js` — o motor de áudio e a Media Session API.
-6. `settings.js` e `script.js` — como tudo isso vira interface.
+2. `icons.js` — só dados (strings SVG), rápido de entender.
+3. `storage.js` — como os dados são salvos (IndexedDB + localStorage).
+4. `theme.js` — como a aparência e a cor automática viram estilo visual.
+5. `library.js` — o coração da biblioteca: pastas, arquivos, tags, cache de áudio.
+6. `player.js` — o motor de áudio e a Media Session API.
+7. `settings.js` e `script.js` — como tudo isso vira interface.
 
 Todas as funções têm comentários no formato "o que faz / como funciona / parâmetros / retorno / cuidados", então dá para entender uma função sem precisar ler o arquivo inteiro.
 
@@ -274,7 +296,7 @@ Todas as funções têm comentários no formato "o que faz / como funciona / par
 | [jsmediatags](https://github.com/aadsm/jsmediatags) | Ler tags ID3/MP4 no navegador | `<script defer src="https://cdn.jsdelivr.net/...">` em `index.html`, expõe `window.jsmediatags` |
 | Google Fonts (Sora, Inter, Poppins, Playfair Display, JetBrains Mono) | Opções de fonte em Ajustes | `<link>` no `<head>` de `index.html` |
 
-Nenhuma outra biblioteca é usada - todo o resto (equalizador, crossfade, temas, playlists, busca) é JavaScript puro.
+Nenhuma outra biblioteca é usada - todo o resto (equalizador, crossfade, ícones, playlists, busca, cor automática) é JavaScript puro.
 
 ---
 
@@ -283,5 +305,5 @@ Nenhuma outra biblioteca é usada - todo o resto (equalizador, crossfade, temas,
 - Gapless playback sample-accurate via pré-decodificação em `AudioBuffer`, com um limite de tamanho/duração que volta ao método atual para arquivos muito longos.
 - Mover a varredura de pastas + leitura de tags para um Web Worker, para não tocar a thread principal nem um pouco em bibliotecas enormes.
 - Reordenar a fila por arrastar-e-soltar.
-- Exportar/importar um tema personalizado como JSON.
+- Mostrar uma estimativa de uso de armazenamento em Ajustes (via `navigator.storage.estimate()`) para quem tiver pastas "manuais" com áudio em cache.
 - Suporte à (ainda experimental) FileSystemObserver API para detectar mudanças numa pasta sem precisar de um "atualizar" manual.

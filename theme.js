@@ -11,27 +11,31 @@
  * POR QUE VARIÁVEIS CSS EM VEZ DE TROCAR FOLHAS DE ESTILO:
  *  - Troca instantânea, sem piscar (não precisa buscar/interpretar um novo
  *    <link>).
- *  - O tema "personalizado" surge naturalmente do mesmo mecanismo: é só o
- *    usuário escolhendo seus próprios valores para as mesmas variáveis que
- *    tudo o mais já usa.
  *
- * TEMAS:
- *  - "dark"    tema escuro premium padrão (grafite + destaques cobre/violeta)
- *  - "light"   fundo claro tipo papel, texto tinta, mesmos tons de destaque
+ * TEMAS DE FUNDO (o usuário escolhe um destes três em Ajustes):
+ *  - "dark"    tema escuro premium padrão (grafite)
+ *  - "light"   fundo claro tipo papel, texto tinta
  *  - "amoled"  fundo #000000 puro para telas OLED (economiza bateria e dá o
  *              preto mais profundo possível atrás da capa desfocada)
- *  - "custom"  cada cor abaixo é controlada pelo usuário, persistida por campo
+ *
+ * COR DE DESTAQUE (--accent / --accent-2): propositalmente NÃO é uma escolha
+ * manual do usuário. Ela é calculada automaticamente a partir da capa da
+ * faixa que está tocando (veja extractPalette em utils.js e a chamada a
+ * `applyAccentFromPalette` em script.js, feita toda vez que uma nova faixa
+ * carrega). A ideia é a pessoa nunca precisar "configurar uma cor" - o app
+ * simplesmente reflete a música. Enquanto nada está tocando, cada tema usa
+ * uma cor de destaque padrão própria (definida em PRESETS abaixo).
  *
  * MELHORIAS FUTURAS:
- *  - Suportar importar/exportar um tema como uma string JSON compartilhável,
- *    para o usuário poder passar um tema personalizado para um amigo.
  *  - Ler prefers-color-scheme no primeiro acesso para escolher entre escuro
  *    e claro como padrão inicial.
+ *  - Suavizar a transição da cor de destaque entre faixas com uma animação
+ *    de crossfade da própria variável CSS (hoje a troca é instantânea).
  */
 
 import { Prefs } from './storage.js';
 
-/** Valores base de cada tema pronto. "custom" nasce a partir dos últimos valores personalizados salvos, em vez desta tabela. */
+/** Valores de cada tema de fundo pronto, incluindo a cor de destaque padrão usada antes de qualquer faixa tocar. */
 const PRESETS = {
   dark: {
     '--bg': '#0b0b0e',
@@ -65,7 +69,7 @@ const PRESETS = {
   },
 };
 
-/** Configurações de aparência que não são cor, também persistidas e aplicadas como variáveis CSS. */
+/** Configurações de aparência que não são cor, persistidas e aplicadas como variáveis CSS. */
 const DEFAULT_APPEARANCE = {
   font: 'Sora',            // chave da fonte de destaque/corpo, veja o mapeamento --font-display em style.css
   radius: 18,               // px, border-radius usado em cartões/botões
@@ -73,15 +77,13 @@ const DEFAULT_APPEARANCE = {
   animationSpeed: 1,        // multiplicador aplicado em --anim-speed (0.5 = mais devagar, 1.5 = mais rápido)
 };
 
+/** Última paleta extraída de uma capa (sessão atual, nunca persistida - é sempre recalculada a partir da faixa tocando). */
+let currentAccent = null;
+
 export const ThemeManager = {
-  /** @returns {string} o nome do tema atualmente ativo */
+  /** @returns {string} o nome do tema de fundo atualmente ativo */
   getActiveThemeName() {
     return Prefs.get('theme', 'dark');
-  },
-
-  /** @returns {object} os valores de cor personalizados salvos (cai para o preset "dark" na primeira vez) */
-  getCustomColors() {
-    return Prefs.get('customColors', { ...PRESETS.dark });
   },
 
   /** @returns {object} aparência salva (fonte/raio/tamanho de cartão/velocidade de animação) */
@@ -90,19 +92,25 @@ export const ThemeManager = {
   },
 
   /**
-   * Aplica um tema pelo nome, escrevendo cada variável de cor em
-   * document.documentElement, o que faz o app inteiro repintar
-   * instantaneamente.
-   * @param {'dark'|'light'|'amoled'|'custom'} name
+   * Aplica um tema de fundo pelo nome, escrevendo cada variável de cor em
+   * document.documentElement. Se já existir uma cor de destaque calculada a
+   * partir da faixa atual, ela é reaplicada por cima do padrão do tema, para
+   * trocar entre escuro/claro/AMOLED nunca "apagar" a cor vinda da música.
+   * @param {'dark'|'light'|'amoled'} name
    */
   applyTheme(name) {
-    const vars = name === 'custom' ? this.getCustomColors() : PRESETS[name] || PRESETS.dark;
+    const vars = PRESETS[name] || PRESETS.dark;
     const root = document.documentElement;
     for (const [key, value] of Object.entries(vars)) {
       root.style.setProperty(key, value);
     }
     root.dataset.theme = name;
     Prefs.set('theme', name);
+
+    if (currentAccent) {
+      root.style.setProperty('--accent', currentAccent.primary);
+      root.style.setProperty('--accent-2', currentAccent.secondary);
+    }
 
     // Mantém a cor do "chrome" do navegador (barra de status / seletor de
     // apps recentes) sincronizada - essa é a única parte da "cor da
@@ -114,21 +122,33 @@ export const ThemeManager = {
   },
 
   /**
-   * Persiste um conjunto de cores personalizadas (total ou parcial) e, se o
-   * tema "custom" estiver ativo no momento, reaplica na hora, para as
-   * edições em Ajustes gerarem uma pré-visualização ao vivo.
-   * @param {Partial<typeof PRESETS.dark>} partialColors
+   * Aplica a cor de destaque (--accent/--accent-2) extraída da capa da
+   * faixa que acabou de começar a tocar. Chamado por script.js toda vez que
+   * uma nova faixa carrega (veja utils.js -> extractPalette). Não persiste
+   * nada - é sempre recalculada a partir da faixa atual, nunca uma escolha
+   * manual do usuário.
+   * @param {{primary: string, secondary: string}} palette
    */
-  setCustomColors(partialColors) {
-    const merged = { ...this.getCustomColors(), ...partialColors };
-    Prefs.set('customColors', merged);
-    if (this.getActiveThemeName() === 'custom') this.applyTheme('custom');
+  applyAccentFromPalette({ primary, secondary }) {
+    currentAccent = { primary, secondary };
+    const root = document.documentElement;
+    root.style.setProperty('--accent', primary);
+    root.style.setProperty('--accent-2', secondary);
+  },
+
+  /** Volta a cor de destaque para o padrão do tema ativo (usado quando a reprodução para e não há mais uma "faixa atual" para tirar cor dela). */
+  resetAccentToDefault() {
+    currentAccent = null;
+    const preset = PRESETS[this.getActiveThemeName()] || PRESETS.dark;
+    const root = document.documentElement;
+    root.style.setProperty('--accent', preset['--accent']);
+    root.style.setProperty('--accent-2', preset['--accent-2']);
   },
 
   /**
    * Persiste uma mudança de aparência (total ou parcial - fonte/raio/tamanho
    * de cartão/velocidade de animação) e aplica as variáveis CSS que não
-   * dependem de um tema de cor específico.
+   * dependem de cor.
    * @param {Partial<typeof DEFAULT_APPEARANCE>} partial
    */
   setAppearance(partial) {
@@ -140,7 +160,7 @@ export const ThemeManager = {
   /**
    * Escreve as variáveis de aparência que não são cor. Separado de
    * applyTheme para poder rodar uma vez na inicialização independentemente
-   * de qual tema de cor está ativo.
+   * de qual tema de fundo está ativo.
    * @param {typeof DEFAULT_APPEARANCE} [appearance]
    */
   applyAppearance(appearance = this.getAppearance()) {

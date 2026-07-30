@@ -53,6 +53,14 @@ h1, h2, h3 { margin: 0; }
 ul { margin: 0; padding: 0; list-style: none; }
 a { color: var(--accent); }
 
+/* Ícones SVG (veja icons.js): herdam a cor via currentColor; tamanho padrão
+   20px, sobrescrito conforme o contexto mais abaixo neste arquivo. */
+.icon { width: 20px; height: 20px; display: block; flex: none; }
+.icon-wrap { display: inline-flex; align-items: center; }
+.icon-wrap .icon { width: 17px; height: 17px; }
+.btn-with-icon { display: inline-flex !important; align-items: center; justify-content: center; gap: 8px; }
+.btn-with-icon .icon { width: 18px; height: 18px; }
+
 /* ============================= 2. VARIÁVEIS DE TEMA ============================= */
 :root {
   --bg: #0b0b0e;
@@ -240,10 +248,13 @@ a { color: var(--accent); }
 .track-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .track-sub { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .track-duration { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-right: 4px; }
-.track-fav-mark { color: var(--accent); font-size: 13px; margin-right: 2px; }
+.track-fav-mark { color: var(--accent); margin-right: 2px; display: inline-flex; }
+.track-fav-mark .icon { width: 14px; height: 14px; }
 .track-kebab { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--text-muted); }
+.track-kebab .icon { width: 18px; height: 18px; }
 .track-row.unplayable { opacity: 0.5; }
-.track-remove-btn { color: var(--text-muted); font-size: 13px; padding: 6px 10px; }
+.track-remove-btn { color: var(--text-muted); padding: 6px 10px; display: inline-flex; }
+.track-remove-btn .icon { width: 16px; height: 16px; }
 
 /* ============================= 6. GRADE DE PLAYLISTS ============================= */
 .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
@@ -294,7 +305,8 @@ a { color: var(--accent); }
   color: var(--text-muted);
   transition: color calc(150ms / var(--anim-speed)) ease;
 }
-.nav-btn .nav-icon { font-size: 19px; }
+.nav-btn .nav-icon { display: flex; }
+.nav-btn .nav-icon .icon { width: 21px; height: 21px; }
 .nav-btn.active { color: var(--accent); }
 
 /* ============================= 9. TOCANDO AGORA ============================= */
@@ -342,38 +354,33 @@ a { color: var(--accent); }
 .np-header .btn-icon { background: rgba(255,255,255,0.12); color: #fff; }
 .np-header-label { font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px; }
 
-/* --- O palco do vinil + capa: o momento visual de assinatura do app --- */
-.vinyl-stage {
+/* --- O palco da capa: o momento visual central da tela "Tocando agora",
+   no estilo Spotify - capa grande e centralizada, sem nenhum elemento de
+   vinil (removido a pedido: o "disco girando" só seria possível numa
+   notificação nativa, que a Media Session API não permite estilizar - veja
+   README "Limitações do navegador"). A troca de faixa anima com um leve
+   fade + scale-in via a classe .track-changed, adicionada e removida pelo
+   script.js. --- */
+.np-cover-stage {
   position: relative;
   flex: 1;
   display: flex; align-items: center; justify-content: center;
   min-height: 0;
   margin: 12px 0;
 }
-.vinyl-disc {
-  position: absolute;
-  width: min(72vw, 340px);
-  height: min(72vw, 340px);
-  border-radius: 50%;
-  background-image: url('assets/vinyl/vinyl-disc.png');
-  background-size: cover;
-  transform: translateX(22%);
-  box-shadow: 0 20px 50px -20px rgba(0,0,0,0.7);
-  animation: spin 9s linear infinite;
-  animation-play-state: paused;
-}
-.vinyl-disc.spinning { animation-play-state: running; }
-@keyframes spin { from { transform: translateX(22%) rotate(0deg); } to { transform: translateX(22%) rotate(360deg); } }
 
 .cover-frame {
   position: relative;
-  width: min(66vw, 310px);
-  height: min(66vw, 310px);
+  width: min(84vw, 360px);
+  height: min(84vw, 360px);
   border-radius: calc(var(--radius) * 1.1);
   overflow: hidden;
   box-shadow: 0 24px 60px -18px rgba(0,0,0,0.8);
-  transform: translateX(-8%);
-  transition: transform calc(400ms / var(--anim-speed)) ease;
+  animation: cover-in calc(420ms / var(--anim-speed)) ease both;
+}
+@keyframes cover-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
 }
 .cover-art { width: 100%; height: 100%; object-fit: cover; }
 
@@ -411,21 +418,24 @@ input[type="range"]::-webkit-slider-thumb {
 #range-playback-rate::-webkit-slider-thumb { background: var(--accent); }
 
 .np-controls { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 4px; }
-.np-side { font-size: 22px; background: none; }
-.np-shuffle, .np-repeat { font-size: 17px; background: none; color: rgba(255,255,255,0.6); }
+.np-side { background: none; }
+.np-side .icon { width: 26px; height: 26px; }
+.np-shuffle, .np-repeat { background: none; color: rgba(255,255,255,0.6); }
+.np-shuffle .icon, .np-repeat .icon { width: 19px; height: 19px; }
 .np-shuffle.active, .np-repeat.active { color: var(--accent); }
 .btn-play-big {
   width: 68px; height: 68px; border-radius: 50%;
   display: grid; place-items: center;
-  font-size: 26px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #14131a;
   box-shadow: 0 10px 24px -8px rgba(0,0,0,0.6);
   transition: transform calc(150ms / var(--anim-speed)) ease;
 }
 .btn-play-big:active { transform: scale(0.93); }
+.btn-play-big .icon { width: 27px; height: 27px; margin-left: 2px; }
 
 .np-secondary-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.np-vol-icon .icon { width: 18px; height: 18px; opacity: 0.75; }
 .np-volume { flex: 1; }
 
 /* ============================= 10. SHEETS ============================= */
@@ -451,6 +461,8 @@ input[type="range"]::-webkit-slider-thumb {
 .sheet-group { margin-bottom: 16px; }
 .sheet-group-title { display: block; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
 .sheet-action { display: block; width: 100%; text-align: left; padding: 12px 4px; font-size: 15px; border-bottom: 1px solid var(--border); }
+.sheet-action.btn-with-icon { justify-content: flex-start; color: var(--text); }
+.sheet-action.btn-with-icon .icon { color: var(--text-muted); }
 .sheet-action:last-child { border-bottom: none; }
 
 /* ============================= 11. TELA DE AJUSTES ============================= */
@@ -461,7 +473,8 @@ input[type="range"]::-webkit-slider-thumb {
 .settings-field select { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; color: var(--text); }
 
 .folder-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; }
-.folder-row-icon { font-size: 20px; }
+.folder-row-icon { color: var(--text-muted); display: flex; }
+.folder-row-icon .icon { width: 20px; height: 20px; }
 .folder-row-info { flex: 1; min-width: 0; }
 .folder-row-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .folder-row-meta { font-size: 12px; color: var(--text-muted); }
@@ -472,10 +485,6 @@ input[type="range"]::-webkit-slider-thumb {
 .theme-options { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .theme-option { padding: 10px 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 500; }
 .theme-option.active { background: var(--accent); color: #14131a; border-color: transparent; }
-
-.custom-colors-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 16px; }
-.custom-colors-panel label { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
-.custom-colors-panel input[type="color"] { width: 36px; height: 28px; border: none; border-radius: 6px; background: none; padding: 0; }
 
 .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
 .switch input { opacity: 0; width: 0; height: 0; }
@@ -500,23 +509,25 @@ input[type="range"]::-webkit-slider-thumb {
   transition: opacity calc(500ms / var(--anim-speed)) ease, visibility calc(500ms / var(--anim-speed));
 }
 #splash-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
-.splash-vinyl { position: relative; width: 120px; height: 120px; }
-.splash-disc {
-  width: 100%; height: 100%; border-radius: 50%;
-  background-image: url('assets/vinyl/vinyl-disc.png');
-  background-size: cover;
-  animation: spin 3s linear infinite;
+.splash-logo {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 56px;
 }
-.splash-tonearm {
-  position: absolute; top: -10px; right: -18px;
-  width: 6px; height: 70px; border-radius: 4px;
-  background: linear-gradient(var(--accent), var(--accent-2));
-  transform-origin: top center;
-  animation: tonearm-drop calc(1200ms / var(--anim-speed)) ease forwards;
+.splash-logo span {
+  width: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  animation: eq-bounce calc(1000ms / var(--anim-speed)) ease-in-out infinite;
 }
-@keyframes tonearm-drop {
-  from { transform: rotate(-35deg); }
-  to { transform: rotate(-6deg); }
+.splash-logo span:nth-child(1) { height: 22px; animation-delay: 0ms; }
+.splash-logo span:nth-child(2) { height: 44px; animation-delay: 120ms; }
+.splash-logo span:nth-child(3) { height: 56px; animation-delay: 240ms; }
+.splash-logo span:nth-child(4) { height: 34px; animation-delay: 360ms; }
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
 }
 .splash-word { font-size: 26px; font-weight: 700; letter-spacing: 1px; }
 .splash-sub { font-size: 13px; color: var(--text-muted); }

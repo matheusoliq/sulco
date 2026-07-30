@@ -5,7 +5,7 @@ Script de build avulso (não faz parte do app entregue) usado para gerar as
 imagens do player de música "Sulco": ícones do app (normais + "maskable"),
 uma textura semitransparente de disco de vinil, e uma capa de álbum padrão
 elegante. Rode uma vez com `python3 generate_assets.py`; a saída vai para
-assets/icons, assets/vinyl e assets/images dentro da pasta do projeto.
+assets/icons e assets/images dentro da pasta do projeto.
 """
 
 import math
@@ -104,11 +104,6 @@ def make_icon(size, maskable=False, path=None):
     img.save(path)
 
 
-def make_vinyl_texture(path, size=1000):
-    disc = draw_vinyl_disc(size, groove_count=64, label_ratio=0.30)
-    disc.save(path)
-
-
 def make_default_cover(path, size=800):
     img = radial_gradient(size, BG2, BG).convert("RGBA")
     draw = ImageDraw.Draw(img)
@@ -135,7 +130,6 @@ if __name__ == "__main__":
     import os
 
     os.makedirs(f"{OUT}/icons", exist_ok=True)
-    os.makedirs(f"{OUT}/vinyl", exist_ok=True)
     os.makedirs(f"{OUT}/images", exist_ok=True)
 
     for size in [72, 96, 128, 144, 152, 180, 192, 384, 512]:
@@ -143,7 +137,6 @@ if __name__ == "__main__":
     for size in [192, 512]:
         make_icon(size, maskable=True, path=f"{OUT}/icons/maskable-{size}.png")
 
-    make_vinyl_texture(f"{OUT}/vinyl/vinyl-disc.png", size=1000)
     make_default_cover(f"{OUT}/images/default-cover.png", size=800)
 
     print("Assets generated.")

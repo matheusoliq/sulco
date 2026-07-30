@@ -150,8 +150,8 @@ function currentTrackId() { return order[currentPos] ?? null; }
 
 async function loadTrackIntoSlot(slotName, trackId) {
   const slot = slots[slotName];
-  const url = Library.getPlayableUrl(trackId);
-  if (!url) return false; // pasta não conectada nesta sessão - veja os comentários em library.js
+  const url = await Library.getPlayableUrl(trackId);
+  if (!url) return false; // faixa sem áudio disponível nesta sessão nem em cache - veja os comentários em library.js
   slot.audio.src = url;
   slot.audio.playbackRate = playbackRate;
   return true;

@@ -19,23 +19,27 @@
  *    no Chrome para Android, Firefox e Safari, nenhum dos quais implementa
  *    showDirectoryPicker até o momento. Essa API não tem o conceito de um
  *    handle persistente: ela devolve uma FileList "instantânea", só daquele
- *    momento. Isso significa que, a cada abertura do app, o usuário precisa
- *    tocar em "Reconectar" e escolher a mesma pasta de novo antes da
- *    reprodução voltar a funcionar - o navegador não dá nenhuma forma de
- *    contornar isso. O que *conseguimos* fazer, e fazemos, é guardar em
- *    cache os metadados de cada faixa (título/artista/capa/etc.), indexados
- *    pelo caminho relativo + tamanho + data de modificação, para que a lista
- *    da biblioteca, a busca, as playlists e os favoritos continuem
- *    funcionando a partir do cache imediatamente ao abrir o app; só *tocar*
- *    uma faixa de fato exige o File atualizado de uma pasta reconectada.
- *    Veja o README.md -> "Limitações do navegador" para a explicação
- *    completa que o código deste arquivo implementa.
+ *    momento. Para a pasta continuar tocável entre sessões sem o usuário
+ *    precisar escolhê-la de novo toda vez, o app copia os bytes de cada
+ *    arquivo de áudio para o próprio armazenamento interno (IndexedDB, veja
+ *    `upsertTrack`/`getPlayableUrl` abaixo) na primeira varredura. Isso
+ *    troca espaço em disco (o áudio fica guardado duas vezes: no
+ *    armazenamento do aparelho e dentro do app) por nunca mais precisar de
+ *    permissão do sistema para tocar uma faixa já conhecida - o usuário só
+ *    precisa reabrir o seletor de pasta se quiser adicionar faixas novas
+ *    que ainda não foram copiadas. Veja o README.md -> "Limitações do
+ *    navegador" para o raciocínio completo por trás dessa escolha.
  *
- * Este módulo propositalmente NÃO guarda os bytes brutos do áudio em lugar
- * nenhum - só metadados + uma pequena imagem de capa por faixa. O áudio é
- * sempre tocado diretamente do File que o navegador nos deu (via um Blob URL
- * criado sob demanda em player.js), o que mantém o uso de armazenamento
- * mínimo e respeita os arquivos originais do usuário.
+ * Faixas vindas de pastas com handle persistente (caso 1 acima) NÃO têm seus
+ * bytes duplicados - elas já têm uma forma confiável de acesso entre
+ * sessões através do próprio handle, então duplicar seria desperdício de
+ * espaço.
+ *
+ * Faixas vindas de pastas com handle persistente nunca têm o áudio
+ * duplicado - o app sempre toca diretamente o arquivo original nesse caso,
+ * via um Blob URL criado sob demanda (veja player.js). Só as faixas de
+ * pastas "manuais" (sem handle persistente) têm uma cópia guardada, e só
+ * para viabilizar tocar sem reconectar - veja acima.
  *
  * MELHORIAS FUTURAS:
  *  - Mover a varredura recursiva de pastas + leitura de tags para um Web
@@ -59,8 +63,10 @@ export function supportsPersistentFolders() {
 
 /** Cache em memória do catálogo completo, sincronizado com o IndexedDB. Exposto somente-leitura via Library.getAll(). */
 let trackCache = [];
-/** trackId -> objeto File "vivo" para a sessão atual (só existe em memória, nunca é persistido). */
+/** trackId -> objeto File "vivo" para a sessão atual (o mais rápido - usado quando a pasta está conectada nesta sessão via handle ou acabou de ser escolhida). */
 const fileRefs = new Map();
+/** Conjunto de trackIds que têm uma cópia do áudio guardada no IndexedDB (store "audioData") - é isso que garante tocar sem precisar reconectar a pasta. Preenchido a partir das chaves do store em loadFromCache(). */
+const persistedAudioIds = new Set();
 /** trackId -> object URL da capa, criado sob demanda e revogado ao recarregar a biblioteca. */
 const coverUrlCache = new Map();
 
@@ -161,10 +167,26 @@ async function readTags(file, relativePath) {
  * memória. Reaproveitado tanto pelo caminho de varredura via FS Access
  * quanto pelo caminho via webkitdirectory, para a lógica de leitura de tags
  * nunca precisar ser escrita duas vezes.
+ * @param {{file: File, relativePath: string, folderId: string, persistAudio?: boolean}} args
+ *        `persistAudio: true` copia os bytes do arquivo para o IndexedDB
+ *        (store "audioData"), usado apenas para pastas sem handle
+ *        persistente - veja o comentário no topo do arquivo.
  */
-async function upsertTrack({ file, relativePath, folderId }) {
+async function upsertTrack({ file, relativePath, folderId, persistAudio = false }) {
   const id = stableTrackId(relativePath, file.size, file.lastModified);
   fileRefs.set(id, file);
+
+  if (persistAudio && !persistedAudioIds.has(id)) {
+    try {
+      await Storage.put('audioData', { trackId: id, blob: file });
+      persistedAudioIds.add(id);
+    } catch (err) {
+      // Provavelmente cota de armazenamento excedida - a faixa continua
+      // tocável nesta sessão (via fileRefs), só não vai sobreviver a um
+      // recarregamento sem reconectar a pasta. Não é um erro fatal.
+      console.warn('[library] não foi possível guardar o áudio em cache para', file.name, err);
+    }
+  }
 
   const existing = trackCache.find((t) => t.id === id);
   if (existing) {
@@ -207,12 +229,16 @@ export const Library = {
   /**
    * Carrega o que foi varrido anteriormente, do IndexedDB para a memória.
    * Chame uma vez na inicialização do app, para a interface ter algo para
-   * mostrar antes mesmo de qualquer (re)varredura terminar - é isso que faz
-   * a biblioteca "carregar instantaneamente" mesmo no modo alternativo
-   * (webkitdirectory), onde os arquivos em si ainda não foram reconectados.
+   * mostrar antes mesmo de qualquer (re)varredura terminar. Também carrega
+   * só as *chaves* do store de áudio em cache (sem os Blobs em si, que
+   * podem ser grandes) para saber instantaneamente quais faixas já tocam
+   * sem precisar reconectar nada.
    */
   async loadFromCache() {
     trackCache = await Storage.getAll('tracks');
+    const cachedIds = await Storage.getAllKeys('audioData');
+    persistedAudioIds.clear();
+    cachedIds.forEach((id) => persistedAudioIds.add(id));
     return trackCache;
   },
 
@@ -242,10 +268,11 @@ export const Library = {
 
   /**
    * Registra uma pasta escolhida via a alternativa <input webkitdirectory> e
-   * varre a FileList que ela devolveu. Como essa API não pode ser "reaberta"
-   * automaticamente, este mesmo método também serve como a ação de
-   * "reconectar pasta": basta chamá-lo de novo com uma FileList atualizada
-   * para atualizar uma pasta já existente (identificada pelo nome).
+   * varre a FileList que ela devolveu, copiando o áudio de cada arquivo para
+   * o armazenamento interno do app (veja upsertTrack/persistAudio) para que
+   * a reprodução funcione em qualquer sessão futura sem precisar escolher a
+   * pasta de novo. Chamar de novo com uma FileList atualizada também serve
+   * para adicionar faixas novas que tenham sido colocadas na pasta depois.
    * @param {FileList} fileList
    * @param {(scanned:number) => void} [onProgress]
    * @returns {Promise<object>} o descritor da pasta
@@ -254,6 +281,14 @@ export const Library = {
     const files = Array.from(fileList).filter((f) => AUDIO_EXTENSIONS.includes(extensionOf(f.name)));
     if (files.length === 0) throw new Error('NO_AUDIO_FILES');
     const rootName = files[0].webkitRelativePath.split('/')[0];
+
+    // Pede armazenamento "persistente" ao navegador (best-effort - nem todo
+    // navegador concede, e a ausência não impede o app de funcionar) para
+    // reduzir a chance do sistema apagar o cache de áudio sob pressão de
+    // espaço em disco.
+    if (navigator.storage?.persist) {
+      navigator.storage.persist().catch(() => {});
+    }
 
     const folders = await Storage.getAll('folders');
     let folder = folders.find((f) => f.kind === 'manual' && f.name === rootName);
@@ -264,7 +299,7 @@ export const Library = {
 
     let count = 0;
     for (const file of files) {
-      await upsertTrack({ file, relativePath: file.webkitRelativePath, folderId: folder.id });
+      await upsertTrack({ file, relativePath: file.webkitRelativePath, folderId: folder.id, persistAudio: true });
       count++;
       if (onProgress) onProgress(count);
       // Cede o controle à thread principal a cada punhado de arquivos, para
@@ -356,6 +391,10 @@ export const Library = {
       fileRefs.delete(track.id);
       const url = coverUrlCache.get(track.id);
       if (url) { URL.revokeObjectURL(url); coverUrlCache.delete(track.id); }
+      if (persistedAudioIds.has(track.id)) {
+        await Storage.delete('audioData', track.id);
+        persistedAudioIds.delete(track.id);
+      }
     }
     trackCache = trackCache.filter((t) => t.folderId !== folderId);
     await Storage.delete('folders', folderId);
@@ -363,23 +402,37 @@ export const Library = {
   },
 
   /**
-   * Devolve um Blob URL tocável para uma faixa, se atualmente tivermos uma
-   * referência de File "viva" para ela (ou seja, a pasta da faixa está
-   * conectada nesta sessão). Devolve null se a pasta precisar ser
-   * reconectada primeiro - a interface deve mostrar isso como "reconecte a
-   * pasta X para tocar".
+   * Devolve um Blob URL tocável para uma faixa. Ordem de tentativa:
+   *   1) Uma referência de File "viva" em memória (pasta conectada nesta
+   *      sessão via handle, ou acabou de ser escolhida/reconectada) - o
+   *      caminho mais rápido, sem tocar no IndexedDB.
+   *   2) A cópia do áudio guardada no IndexedDB (store "audioData"), para
+   *      faixas de pastas "manuais" que já foram varridas antes - é isso
+   *      que permite tocar sem pedir a pasta de novo a cada sessão.
+   * Devolve null só se a faixa nunca teve o áudio disponibilizado de
+   * nenhuma das duas formas (ex: pasta com handle cuja permissão expirou e
+   * nunca foi do tipo "manual" - a interface deve então sugerir reconectar
+   * em Ajustes).
    * @param {string} trackId
-   * @returns {string|null}
+   * @returns {Promise<string|null>}
    */
-  getPlayableUrl(trackId) {
-    const file = fileRefs.get(trackId);
-    if (!file) return null;
-    return URL.createObjectURL(file);
+  async getPlayableUrl(trackId) {
+    const liveFile = fileRefs.get(trackId);
+    if (liveFile) return URL.createObjectURL(liveFile);
+
+    if (persistedAudioIds.has(trackId)) {
+      const record = await Storage.get('audioData', trackId);
+      if (record?.blob) {
+        fileRefs.set(trackId, record.blob); // acelera chamadas futuras nesta mesma sessão
+        return URL.createObjectURL(record.blob);
+      }
+    }
+    return null;
   },
 
-  /** @param {string} trackId @returns {boolean} se esta faixa pode ser tocada agora sem reconectar nada */
+  /** @param {string} trackId @returns {boolean} se esta faixa pode ser tocada agora (via handle vivo ou cópia já guardada no IndexedDB) */
   isPlayable(trackId) {
-    return fileRefs.has(trackId);
+    return fileRefs.has(trackId) || persistedAudioIds.has(trackId);
   },
 
   /**

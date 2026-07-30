@@ -37,6 +37,7 @@ import { Library, supportsPersistentFolders } from './library.js';
 import { Player } from './player.js';
 import { ThemeManager } from './theme.js';
 import { Settings } from './settings.js';
+import { Icons } from './icons.js';
 import { formatTime, escapeHtml, pluralTracks, extractPalette, debounce } from './utils.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -159,13 +160,13 @@ function trackRowHTML(track) {
         <span class="track-title">${escapeHtml(track.title)}</span>
         <span class="track-sub">${escapeHtml(track.artist)} · ${escapeHtml(track.album)}</span>
       </div>
-      ${stat?.favorite ? '<span class="track-fav-mark">♥</span>' : ''}
+      ${stat?.favorite ? `<span class="track-fav-mark">${Icons.heartFilled}</span>` : ''}
       <span class="track-duration">${formatTime(track.duration)}</span>
-      <button class="track-kebab" data-action="menu" aria-label="Mais opções">⋮</button>
+      <button class="track-kebab" data-action="menu" aria-label="Mais opções">${Icons.kebab}</button>
     </div>`;
 }
 
-/** Mesma linha, mas com um botão de remoção direto no lugar do menu "⋮" (usado na tela de detalhe de playlist). */
+/** Mesma linha, mas com um botão de remoção direto no lugar do menu de opções (usado na tela de detalhe de playlist). */
 function trackRowHTMLWithRemove(track) {
   return `
     <div class="track-row" data-track-id="${track.id}">
@@ -175,7 +176,7 @@ function trackRowHTMLWithRemove(track) {
         <span class="track-sub">${escapeHtml(track.artist)} · ${escapeHtml(track.album)}</span>
       </div>
       <span class="track-duration">${formatTime(track.duration)}</span>
-      <button class="track-remove-btn" data-action="remove" aria-label="Remover da playlist">✕</button>
+      <button class="track-remove-btn" data-action="remove" aria-label="Remover da playlist">${Icons.close}</button>
     </div>`;
 }
 
@@ -183,7 +184,7 @@ function trackRowHTMLWithRemove(track) {
  * Renderiza uma lista de faixas dentro de `container` e conecta um único
  * handler de clique delegado, que toca a faixa tocada (definindo a lista
  * inteira como a nova fila) ou abre a sheet de ações da faixa quando o botão
- * "⋮" é tocado.
+ * de menu é tocado.
  * @param {HTMLElement} container
  * @param {Array<object>} tracks
  * @param {{emptyMessage?: string, playlistId?: string}} [opts]
@@ -407,7 +408,7 @@ async function renderPlaylistDetail(playlistId) {
   const tracks = playlist.trackIds.map((id) => allTracks.find((t) => t.id === id)).filter(Boolean);
 
   $('#playlist-detail-title').textContent = playlist.name;
-  renderTrackList($('#playlist-detail-list'), tracks, { emptyMessage: 'Playlist vazia. Adicione faixas pelo menu "⋮" de qualquer música.', playlistId });
+  renderTrackList($('#playlist-detail-list'), tracks, { emptyMessage: 'Playlist vazia. Adicione faixas pelo menu de opções de qualquer música.', playlistId });
 }
 
 function wirePlaylists() {
@@ -528,16 +529,16 @@ function collapseNowPlaying() {
 function updateRepeatButton(mode) {
   const btn = $('#np-repeat');
   btn.classList.toggle('active', mode !== 'off');
-  btn.textContent = mode === 'one' ? '⟲¹' : '⟲';
+  btn.innerHTML = mode === 'one' ? Icons.repeatOne : Icons.repeat;
   btn.title = mode === 'off' ? 'Repetir: desligado' : mode === 'all' ? 'Repetir: tudo' : 'Repetir: uma faixa';
 }
 function updateFavoriteButton(isFav) {
   const btn = $('#np-favorite');
   btn.classList.toggle('active', isFav);
-  btn.textContent = isFav ? '♥' : '♡';
+  btn.innerHTML = isFav ? Icons.heartFilled : Icons.heartOutline;
 }
 
-/** Atualiza o mini player, a capa/meta do "Tocando agora" e o fundo com cor dominante para uma faixa recém-carregada. */
+/** Atualiza o mini player, a capa/meta do "Tocando agora" e a cor de destaque do app inteiro para uma faixa recém-carregada. */
 function renderNowPlayingTrack(track) {
   currentTrack = track;
   $('#mini-player').hidden = false;
@@ -555,15 +556,27 @@ function renderNowPlayingTrack(track) {
   const bg = $('#now-playing-bg');
   bg.style.backgroundImage = `url("${coverUrl}")`;
 
-  // Extrai as cores dominante/destaque assim que a capa realmente carregar,
-  // para o gradiente do "Tocando agora" refletir a arte desta faixa
-  // específica - é o item "gradiente baseado nas cores predominantes da
-  // capa" do pedido original, calculado no próprio navegador, sem precisar
-  // de nenhuma chamada de rede.
+  // Reinicia a pequena animação de entrada da capa a cada troca de faixa
+  // (o CSS já define a animação na classe; isso só força o navegador a
+  // "reiniciar" o relógio dela via um reflow forçado).
+  const coverFrame = $('.cover-frame');
+  if (coverFrame) {
+    coverFrame.style.animation = 'none';
+    void coverFrame.offsetWidth;
+    coverFrame.style.animation = '';
+  }
+
+  // Extrai as cores dominante/destaque assim que a capa realmente carregar e
+  // aplica em duas frentes: o gradiente de fundo do "Tocando agora" (efeito
+  // visual local dessa tela) e a cor de destaque do app inteiro via
+  // ThemeManager (botões, realces, barra de progresso etc.) - é assim que a
+  // cor do app "segue a música" automaticamente, sem o usuário escolher
+  // nada em Ajustes.
   const applyPalette = () => {
-    const { primary, secondary } = extractPalette(coverImg);
-    bg.style.setProperty('--np-color-1', primary);
-    bg.style.setProperty('--np-color-2', secondary);
+    const palette = extractPalette(coverImg);
+    bg.style.setProperty('--np-color-1', palette.primary);
+    bg.style.setProperty('--np-color-2', palette.secondary);
+    ThemeManager.applyAccentFromPalette(palette);
   };
   if (coverImg.complete) applyPalette(); else coverImg.onload = applyPalette;
 
@@ -573,7 +586,7 @@ function renderNowPlayingTrack(track) {
   refreshAllCurrentRowHighlights();
 
   if (!Library.isPlayable(track.id)) {
-    showToast('Pasta desconectada - reconecte em Ajustes para tocar esta faixa.');
+    showToast('Não foi possível tocar esta faixa - reconecte a pasta em Ajustes.');
   }
 }
 
@@ -658,7 +671,7 @@ function wireSheets() {
     const trackId = $('#track-action-sheet').dataset.trackId;
     const isFav = await Library.toggleFavorite(trackId);
     statsMap = await Library.getAllStats();
-    $('#action-toggle-favorite').textContent = isFav ? '♥ Remover dos favoritos' : '♡ Favoritar';
+    $('#action-toggle-favorite').innerHTML = favoriteActionHTML(isFav);
     if (currentTrack?.id === trackId) updateFavoriteButton(isFav);
     refreshAllCurrentRowHighlights();
     await renderHome();
@@ -676,6 +689,13 @@ function wireSheets() {
   });
 }
 
+/** Monta o rótulo com ícone do botão "Favoritar" na sheet de ações, de acordo com o estado atual. */
+function favoriteActionHTML(isFav) {
+  return isFav
+    ? `${Icons.heartFilled}<span>Remover dos favoritos</span>`
+    : `${Icons.heartOutline}<span>Favoritar</span>`;
+}
+
 async function openTrackActionSheet(trackId) {
   const track = Library.getAll().find((t) => t.id === trackId);
   if (!track) return;
@@ -684,13 +704,13 @@ async function openTrackActionSheet(trackId) {
   $('#track-action-title').textContent = `${track.title} · ${track.artist}`;
 
   const isFav = statsMap.get(trackId)?.favorite;
-  $('#action-toggle-favorite').textContent = isFav ? '♥ Remover dos favoritos' : '♡ Favoritar';
+  $('#action-toggle-favorite').innerHTML = favoriteActionHTML(isFav);
 
   const playlists = await Library.getPlaylists();
   const listEl = $('#action-playlist-list');
   listEl.innerHTML = playlists.map((p) => {
     const inPlaylist = p.trackIds.includes(trackId);
-    return `<button class="sheet-action" data-playlist-id="${p.id}">${inPlaylist ? '✓' : '+'} ${escapeHtml(p.name)}</button>`;
+    return `<button class="sheet-action btn-with-icon" data-playlist-id="${p.id}">${inPlaylist ? Icons.check : Icons.plus}<span>${escapeHtml(p.name)}</span></button>`;
   }).join('') || '<p class="empty-hint">Nenhuma playlist criada ainda.</p>';
   listEl.onclick = async (e) => {
     const btn = e.target.closest('[data-playlist-id]');
@@ -716,16 +736,14 @@ function wirePlayerEvents() {
   Player.on('trackchange', (track) => { if (track) renderNowPlayingTrack(track); });
 
   Player.on('play', () => {
-    $('#mini-playpause').textContent = '⏸';
-    $('#np-playpause').textContent = '⏸';
-    $('#home-hero-playpause').textContent = '⏸';
-    $('#vinyl-disc').classList.add('spinning');
+    $('#mini-playpause').innerHTML = Icons.pause;
+    $('#np-playpause').innerHTML = Icons.pause;
+    $('#home-hero-playpause').innerHTML = Icons.pause;
   });
   Player.on('pause', () => {
-    $('#mini-playpause').textContent = '▶';
-    $('#np-playpause').textContent = '▶';
-    $('#home-hero-playpause').textContent = '▶';
-    $('#vinyl-disc').classList.remove('spinning');
+    $('#mini-playpause').innerHTML = Icons.play;
+    $('#np-playpause').innerHTML = Icons.play;
+    $('#home-hero-playpause').innerHTML = Icons.play;
   });
 
   Player.on('timeupdate', ({ currentTime, duration }) => {

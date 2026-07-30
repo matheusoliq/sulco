@@ -24,6 +24,15 @@
  *  - "stats"     keyPath "trackId" -> { trackId, playCount, lastPlayedAt, favorite }
  *  - "handles"   keyPath "id"   -> objetos FileSystemDirectoryHandle brutos
  *                                  (só Chromium desktop - veja library.js)
+ *  - "audioData" keyPath "trackId" -> { trackId, blob } cópia dos bytes do
+ *                                  áudio, guardada apenas para pastas
+ *                                  adicionadas pelo modo alternativo
+ *                                  (<input webkitdirectory>, usado no
+ *                                  Android/Firefox/Safari). É isso que
+ *                                  garante tocar as faixas sem precisar
+ *                                  reconectar a pasta a cada sessão - veja
+ *                                  library.js e o README para o
+ *                                  trade-off de espaço em disco envolvido.
  *
  * MELHORIAS FUTURAS:
  *  - Adicionar um helper de migração de schema se o formato dos stores
@@ -35,8 +44,8 @@
  */
 
 const DB_NAME = 'sulco-db';
-const DB_VERSION = 1;
-const STORES = ['tracks', 'folders', 'playlists', 'stats', 'handles'];
+const DB_VERSION = 2;
+const STORES = ['tracks', 'folders', 'playlists', 'stats', 'handles', 'audioData'];
 
 /** @type {Promise<IDBDatabase>|null} promise da conexão aberta, em cache */
 let dbPromise = null;
@@ -54,7 +63,7 @@ function openDb() {
       const db = request.result;
       for (const name of STORES) {
         if (!db.objectStoreNames.contains(name)) {
-          const keyPath = name === 'stats' ? 'trackId' : 'id';
+          const keyPath = (name === 'stats' || name === 'audioData') ? 'trackId' : 'id';
           db.createObjectStore(name, { keyPath });
         }
       }
@@ -112,6 +121,11 @@ export const Storage = {
   /** Lê todos os registros de um store. Tranquilo para a nossa escala (uma biblioteca pessoal, não um catálogo de streaming). */
   getAll(storeName) {
     return withStore(storeName, 'readonly', (store) => store.getAll());
+  },
+
+  /** Lê só as chaves primárias de um store, sem carregar os registros inteiros (útil para checar rapidamente "quais faixas têm áudio em cache" sem trazer todos os Blobs para a memória). @returns {Promise<Array<string>>} */
+  getAllKeys(storeName) {
+    return withStore(storeName, 'readonly', (store) => store.getAllKeys());
   },
 
   /** Apaga um único registro pela chave primária. */

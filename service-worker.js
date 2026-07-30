@@ -33,7 +33,7 @@
  *    `activate`, em vez de assumir o controle silenciosamente.
  */
 
-const CACHE_VERSION = 'sulco-v1';
+const CACHE_VERSION = 'sulco-v2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -48,6 +48,7 @@ const SHELL_URLS = [
   './theme.js',
   './storage.js',
   './utils.js',
+  './icons.js',
   './manifest.json',
   './assets/icons/icon-72.png',
   './assets/icons/icon-96.png',
@@ -59,7 +60,6 @@ const SHELL_URLS = [
   './assets/icons/icon-512.png',
   './assets/icons/maskable-192.png',
   './assets/icons/maskable-512.png',
-  './assets/vinyl/vinyl-disc.png',
   './assets/images/default-cover.png',
 ];
 

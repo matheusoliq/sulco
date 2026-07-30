@@ -2,12 +2,17 @@
  * settings.js
  * ---------------------------------------------------------------------------
  * Toda a montagem de DOM da tela de Ajustes vive aqui: gerenciar pastas
- * monitoradas (adicionar / remover / reconectar), os controles de tema +
- * aparência (escuro/claro/AMOLED/personalizado, cores de destaque, fonte,
- * raio das bordas, tamanho dos cartões, velocidade das animações),
- * preferências de reprodução (crossfade/gapless, equalizador, velocidade de
- * reprodução) e o pequeno painel "Sobre", que documenta as limitações de
- * navegador enfrentadas por este app.
+ * monitoradas (adicionar / remover / atualizar), os controles de aparência
+ * (tema de fundo escuro/claro/AMOLED, fonte, raio das bordas, tamanho dos
+ * cartões, velocidade das animações), preferências de reprodução
+ * (crossfade/gapless, equalizador, velocidade de reprodução) e o pequeno
+ * painel "Sobre", que documenta as limitações de navegador enfrentadas por
+ * este app.
+ *
+ * De propósito, NÃO existe nenhum controle de cor manual aqui - a cor de
+ * destaque do app é sempre calculada automaticamente a partir da capa da
+ * faixa que está tocando (veja theme.js -> applyAccentFromPalette). A pessoa
+ * não precisa pensar em cores; o app reflete a música.
  *
  * Este é o único módulo que tem permissão de mexer diretamente em
  * library.js/theme.js/player.js *e* no DOM ao mesmo tempo - script.js trata
@@ -15,19 +20,21 @@
  * chama Settings.init() uma vez, na inicialização.
  *
  * MELHORIAS FUTURAS:
- *  - Adicionar um par explícito de "exportar ajustes como JSON" / "importar",
- *    para fazer backup de um tema totalmente personalizado.
+ *  - Mostrar uma estimativa de uso de armazenamento (navigator.storage.estimate())
+ *    para a pessoa acompanhar quanto espaço o cache de áudio das pastas
+ *    "manuais" está ocupando.
  */
 
 import { Library, supportsPersistentFolders } from './library.js';
 import { ThemeManager } from './theme.js';
 import { Player } from './player.js';
+import { Icons } from './icons.js';
 import { escapeHtml, pluralTracks } from './utils.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-/** Renderiza de novo a lista de pastas monitoradas. Chamado depois de qualquer adição/remoção/reconexão. */
+/** Renderiza de novo a lista de pastas monitoradas. Chamado depois de qualquer adição/remoção/atualização. */
 async function renderFolderList() {
   const container = $('#folder-list');
   if (!container) return;
@@ -41,17 +48,16 @@ async function renderFolderList() {
 
   container.innerHTML = folders.map((folder) => {
     const count = tracks.filter((t) => t.folderId === folder.id).length;
-    const needsReconnect = folder.kind === 'manual' || folder._needsPermission;
     return `
       <div class="folder-row" data-folder-id="${folder.id}">
-        <div class="folder-row-icon" aria-hidden="true">📁</div>
+        <div class="folder-row-icon" aria-hidden="true">${Icons.folder}</div>
         <div class="folder-row-info">
           <div class="folder-row-name">${escapeHtml(folder.name)}</div>
-          <div class="folder-row-meta">${pluralTracks(count)}${needsReconnect ? ' · reconexão pode ser necessária' : ''}</div>
+          <div class="folder-row-meta">${pluralTracks(count)}</div>
         </div>
         <div class="folder-row-actions">
-          <button class="btn-icon btn-reconnect-folder" data-id="${folder.id}" title="Reconectar / atualizar pasta">↻</button>
-          <button class="btn-icon btn-remove-folder" data-id="${folder.id}" title="Remover pasta">✕</button>
+          <button class="btn-icon btn-reconnect-folder" data-id="${folder.id}" title="Atualizar pasta (buscar faixas novas)">${Icons.refresh}</button>
+          <button class="btn-icon btn-remove-folder" data-id="${folder.id}" title="Remover pasta">${Icons.close}</button>
         </div>
       </div>`;
   }).join('');
@@ -66,8 +72,8 @@ function initFolderControls(onLibraryChanged) {
 
   if (supportNote) {
     supportNote.textContent = supportsPersistentFolders()
-      ? 'Este navegador permite manter as pastas conectadas entre sessões automaticamente.'
-      : 'Este navegador não permite lembrar pastas selecionadas entre sessões (limitação do sistema, não do app). Talvez seja necessário tocar em "Reconectar" ao reabrir o app antes de reproduzir - a lista, favoritos e playlists continuam funcionando normalmente a partir do cache.';
+      ? 'Este navegador mantém a pasta conectada automaticamente entre sessões.'
+      : 'Este navegador não permite manter uma pasta "conectada" entre sessões (limitação do sistema, não do app) - por isso, ao adicionar a pasta, o app guarda uma cópia do áudio no armazenamento interno dele. Assim, a reprodução continua funcionando normalmente sempre, sem pedir a pasta de novo; use "Atualizar" só quando quiser detectar músicas novas que tenham sido adicionadas à pasta depois.';
   }
 
   addBtn?.addEventListener('click', async () => {
@@ -119,32 +125,32 @@ function initFolderControls(onLibraryChanged) {
       const progressEl2 = $('#folder-scan-progress');
       try {
         if (folder.kind === 'handle') {
-          progressEl2.textContent = 'Reconectando…';
+          progressEl2.textContent = 'Atualizando…';
           await Library.reconnectHandleFolder(id, (n) => { progressEl2.textContent = `Atualizando… ${n} arquivos`; });
         } else {
-          // Pastas manuais (webkitdirectory) reconectam pelo mesmo fluxo do seletor.
+          // Pastas manuais (webkitdirectory) atualizam pelo mesmo fluxo do seletor -
+          // isso só é necessário para detectar faixas novas, a reprodução das que já
+          // foram varridas antes continua funcionando sem isso.
           fallbackInput.click();
         }
         progressEl2.textContent = '';
         await renderFolderList();
         onLibraryChanged();
       } catch (err) {
-        console.warn('[settings] reconexão falhou', err);
-        progressEl2.textContent = 'Não foi possível reconectar. Tente novamente.';
+        console.warn('[settings] atualização falhou', err);
+        progressEl2.textContent = 'Não foi possível atualizar. Tente novamente.';
       }
     }
   });
 }
 
-/** Conecta os controles de tema + aparência (cores, fonte, raio, tamanho de cartão, velocidade de animação). */
+/** Conecta os controles de tema de fundo + aparência (fonte, raio, tamanho de cartão, velocidade de animação). A cor de destaque NÃO é configurável aqui de propósito - ela vem automaticamente da capa da faixa tocando (veja theme.js). */
 function initAppearanceControls() {
   const themeButtons = $$('.theme-option');
-  const customPanel = $('#custom-colors-panel');
   const activeTheme = ThemeManager.getActiveThemeName();
 
   const syncThemeButtons = (name) => {
     themeButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.theme === name));
-    if (customPanel) customPanel.hidden = name !== 'custom';
   };
   syncThemeButtons(activeTheme);
 
@@ -154,23 +160,6 @@ function initAppearanceControls() {
       syncThemeButtons(btn.dataset.theme);
     });
   });
-
-  const colorFieldMap = {
-    '#color-bg': '--bg',
-    '#color-bg-elevated': '--bg-elevated',
-    '#color-surface': '--surface',
-    '#color-text': '--text',
-    '#color-text-muted': '--text-muted',
-    '#color-accent': '--accent',
-    '#color-accent-2': '--accent-2',
-  };
-  const customColors = ThemeManager.getCustomColors();
-  for (const [sel, cssVar] of Object.entries(colorFieldMap)) {
-    const input = $(sel);
-    if (!input) continue;
-    if (customColors[cssVar]) input.value = customColors[cssVar];
-    input.addEventListener('input', () => ThemeManager.setCustomColors({ [cssVar]: input.value }));
-  }
 
   const appearance = ThemeManager.getAppearance();
   const fontSelect = $('#select-font');
