@@ -13,20 +13,21 @@ Não existe backend, não existe streaming, nenhuma música sai do seu aparelho.
 3. [Instalar e executar](#instalar-e-executar)
 4. [Transformar em PWA / instalar no celular](#transformar-em-pwa--instalar-no-celular)
 5. [Publicar no GitHub Pages](#publicar-no-github-pages)
-6. [Como funciona a leitura de metadados (ID3)](#como-funciona-a-leitura-de-metadados-id3)
-7. [Como funciona a Media Session API](#como-funciona-a-media-session-api)
-8. [Como funciona o Service Worker](#como-funciona-o-service-worker)
-9. [Limitações do navegador (leitura importante)](#limitações-do-navegador-leitura-importante)
-10. [Personalizar o app](#personalizar-o-app)
+6. [App nativo Android (.apk)](#app-nativo-android-apk)
+7. [Como funciona a leitura de metadados (ID3)](#como-funciona-a-leitura-de-metadados-id3)
+8. [Como funciona a Media Session API](#como-funciona-a-media-session-api)
+9. [Como funciona o Service Worker](#como-funciona-o-service-worker)
+10. [Limitações do navegador (leitura importante)](#limitações-do-navegador-leitura-importante)
+11. [Personalizar o app](#personalizar-o-app)
     - [Sobre a cor de destaque (por que não é manual)](#sobre-a-cor-de-destaque-por-que-não-é-manual)
     - [Trocar fontes](#trocar-fontes)
     - [Editar animações](#editar-animações)
     - [Alterar o layout](#alterar-o-layout)
     - [Adicionar novos módulos](#adicionar-novos-módulos)
-11. [Decisões técnicas e por quê](#decisões-técnicas-e-por-quê)
-12. [Como estudar este código](#como-estudar-este-código)
-13. [Dependências externas](#dependências-externas)
-14. [Ideias de melhorias futuras](#ideias-de-melhorias-futuras)
+12. [Decisões técnicas e por quê](#decisões-técnicas-e-por-quê)
+13. [Como estudar este código](#como-estudar-este-código)
+14. [Dependências externas](#dependências-externas)
+15. [Ideias de melhorias futuras](#ideias-de-melhorias-futuras)
 
 ---
 
@@ -81,6 +82,7 @@ sulco/
 ├── storage.js                  # Camada IndexedDB + localStorage usada por todo o resto
 ├── utils.js                     # Funções auxiliares (formatação de tempo, paleta de cores, busca)
 ├── icons.js                      # Conjunto de ícones SVG usados em toda a interface
+├── android-bridge.js              # Ponte opcional com o wrapper nativo Android (sulco-android/) - no-op num navegador comum
 ├── service-worker.js             # Cache do "app shell" para funcionamento 100% offline
 ├── manifest.json                  # Manifesto da PWA (ícones, cores, atalhos)
 ├── generate_assets.py              # Script auxiliar (não faz parte do app) usado para gerar os PNGs abaixo
@@ -137,6 +139,18 @@ Depois de instalado, o app abre em tela cheia, sem a barra de endereço do naveg
 5. **Importante:** se o repositório não estiver na raiz do domínio (ou seja, a URL tem um `/nome-do-repo/` no meio), os caminhos relativos usados no projeto (`assets/...`, `./index.html` no manifest, etc.) continuam funcionando normalmente porque são todos relativos — não é necessário editar nada.
 
 O HTTPS que o GitHub Pages fornece automaticamente é obrigatório para a Service Worker e para o File System Access API funcionarem (essas APIs exigem "contexto seguro").
+
+---
+
+## App nativo Android (.apk)
+
+Além da PWA, existe um projeto irmão, `sulco-android/`, que embrulha este
+mesmo site num app Android instalável como `.apk`, com notificação de mídia
+nativa (cor/capa sob nosso controle), acesso permanente à pasta de música via
+Storage Access Framework (sem precisar reconectar) e uma bolha flutuante
+experimental. Ele carrega o site publicado dentro de uma WebView - ou seja,
+atualizar o código aqui atualiza o app automaticamente, sem recompilar nada.
+Veja `sulco-android/README-ANDROID.md` para o passo a passo completo.
 
 ---
 

@@ -236,3 +236,15 @@ export function readAudioDuration(file) {
 export function pluralTracks(count) {
   return `${count} ${count === 1 ? 'faixa' : 'faixas'}`;
 }
+
+/**
+ * @returns {boolean} true quando este código roda dentro do wrapper nativo
+ * Android (projeto sulco-android/), detectado pela presença do objeto
+ * `window.AndroidBridge` que o MainActivity.kt injeta via
+ * `@JavascriptInterface`. Em qualquer navegador comum isso é sempre false,
+ * e o app se comporta exatamente como a versão web/PWA - veja
+ * android-bridge.js para onde isso é usado.
+ */
+export function isAndroidNative() {
+  return typeof window !== 'undefined' && typeof window.AndroidBridge === 'object' && window.AndroidBridge !== null;
+}

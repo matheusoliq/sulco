@@ -49,6 +49,7 @@ const SHELL_URLS = [
   './storage.js',
   './utils.js',
   './icons.js',
+  './android-bridge.js',
   './manifest.json',
   './assets/icons/icon-72.png',
   './assets/icons/icon-96.png',

@@ -574,3 +574,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* Modo bolha (veja script.js -> applyBubbleModeIfNeeded): a janela flutuante
+   do app nativo Android só mostra a tela "Tocando agora", sem navegação
+   inferior nem mini player - não fazem sentido numa janela tão pequena. */
+[data-bubble-mode="true"] #bottom-nav,
+[data-bubble-mode="true"] .mini-player {
+  display: none !important;
+}
+[data-bubble-mode="true"] #view-container {
+  padding-bottom: 0;
+}

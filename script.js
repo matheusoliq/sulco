@@ -38,6 +38,7 @@ import { Player } from './player.js';
 import { ThemeManager } from './theme.js';
 import { Settings } from './settings.js';
 import { Icons } from './icons.js';
+import { initAndroidBridge } from './android-bridge.js';
 import { formatTime, escapeHtml, pluralTracks, extractPalette, debounce } from './utils.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -70,6 +71,7 @@ async function boot() {
   wireMiniPlayerAndNowPlaying();
   wireSheets();
   wirePlayerEvents();
+  initAndroidBridge();
   wireInstallPrompt();
 
   await Settings.init({ onLibraryChanged: onLibraryChanged });
@@ -89,7 +91,27 @@ async function boot() {
   }
 
   registerServiceWorker();
+  applyBubbleModeIfNeeded();
   dismissSplash();
+}
+
+/**
+ * Quando este site é aberto com "?bubble=1" na URL, a janela é tratada como
+ * compacta e mostra só a tela "Tocando agora", sem navegação inferior nem
+ * mini player (veja `[data-bubble-mode="true"]` em style.css). Não é usado
+ * pela bolha flutuante nativa do wrapper Android (essa usa uma view nativa
+ * própria, sem WebView - veja sulco-android/BubbleActivity.kt) - fica aqui
+ * como um modo compacto genérico, útil por exemplo numa janela de PWA
+ * separada. Fora desses contextos, "bubble=1" nunca aparece e esta função
+ * não faz nada.
+ */
+function applyBubbleModeIfNeeded() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('bubble') !== '1') return;
+  document.documentElement.dataset.bubbleMode = 'true';
+  openNowPlaying();
+  const collapseBtn = $('#btn-collapse-now-playing');
+  if (collapseBtn) collapseBtn.hidden = true; // não há para onde "minimizar" dentro da própria bolha
 }
 
 function dismissSplash() {

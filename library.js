@@ -52,7 +52,7 @@
  */
 
 import { Storage, Prefs } from './storage.js';
-import { uid, firstNonEmpty, readAudioDuration, matchesQuery } from './utils.js';
+import { uid, firstNonEmpty, readAudioDuration, matchesQuery, isAndroidNative } from './utils.js';
 
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg', 'opus'];
 
@@ -282,11 +282,18 @@ export const Library = {
     if (files.length === 0) throw new Error('NO_AUDIO_FILES');
     const rootName = files[0].webkitRelativePath.split('/')[0];
 
+    // Dentro do wrapper nativo Android (sulco-android/), a pasta já é
+    // reconectada de forma persistente e automática pelo próprio sistema
+    // (Storage Access Framework, com permissão concedida uma única vez) -
+    // duplicar o áudio no IndexedDB seria desperdício de espaço nesse caso.
+    // Só faz sentido para o navegador comum, sem esse mecanismo nativo.
+    const shouldPersistAudio = !isAndroidNative();
+
     // Pede armazenamento "persistente" ao navegador (best-effort - nem todo
     // navegador concede, e a ausência não impede o app de funcionar) para
     // reduzir a chance do sistema apagar o cache de áudio sob pressão de
     // espaço em disco.
-    if (navigator.storage?.persist) {
+    if (shouldPersistAudio && navigator.storage?.persist) {
       navigator.storage.persist().catch(() => {});
     }
 
@@ -299,7 +306,7 @@ export const Library = {
 
     let count = 0;
     for (const file of files) {
-      await upsertTrack({ file, relativePath: file.webkitRelativePath, folderId: folder.id, persistAudio: true });
+      await upsertTrack({ file, relativePath: file.webkitRelativePath, folderId: folder.id, persistAudio: shouldPersistAudio });
       count++;
       if (onProgress) onProgress(count);
       // Cede o controle à thread principal a cada punhado de arquivos, para
