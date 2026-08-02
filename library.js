@@ -56,8 +56,28 @@ import { uid, firstNonEmpty, readAudioDuration, matchesQuery, isAndroidNative } 
 
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg', 'opus'];
 
-/** @returns {boolean} true se este navegador consegue monitorar pastas reais de forma persistente */
+/**
+ * @returns {boolean} true se este navegador consegue monitorar pastas reais de forma persistente
+ *
+ * NOTA IMPORTANTE (WebView Android): a partir do Chromium 132, o WebView do
+ * Android passou a *expor* `window.showDirectoryPicker` no objeto global,
+ * mesmo sem nunca ter implementado o diálogo de permissão nem a UI que essa
+ * API precisa para funcionar (isso só existe em Chrome/Chromium de desktop -
+ * veja a thread "Intent to Ship: File System Access on Android and WebView"
+ * no grupo blink-dev do Chromium). Resultado: dentro do wrapper nativo,
+ * `'showDirectoryPicker' in window` dá `true`, o app tenta chamar
+ * `window.showDirectoryPicker()`, e a chamada nunca resolve nem rejeita de
+ * forma visível - a tela fica "travada" sem nenhum pedido de permissão
+ * aparecer.
+ * Por isso, dentro do wrapper nativo Android (isAndroidNative() === true)
+ * este suporte é sempre tratado como indisponível, mesmo que a propriedade
+ * exista em window - o que força o uso do fallback via
+ * `<input type="file" webkitdirectory>`, que o MainActivity.kt do wrapper já
+ * intercepta corretamente (onShowFileChooser) para dar acesso persistente de
+ * verdade via Storage Access Framework (veja FolderAccess.kt).
+ */
 export function supportsPersistentFolders() {
+  if (isAndroidNative()) return false;
   return 'showDirectoryPicker' in window;
 }
 

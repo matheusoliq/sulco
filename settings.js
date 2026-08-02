@@ -29,7 +29,7 @@ import { Library, supportsPersistentFolders } from './library.js';
 import { ThemeManager } from './theme.js';
 import { Player } from './player.js';
 import { Icons } from './icons.js';
-import { escapeHtml, pluralTracks } from './utils.js';
+import { escapeHtml, pluralTracks, isAndroidNative } from './utils.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -71,9 +71,13 @@ function initFolderControls(onLibraryChanged) {
   const progressEl = $('#folder-scan-progress');
 
   if (supportNote) {
-    supportNote.textContent = supportsPersistentFolders()
-      ? 'Este navegador mantém a pasta conectada automaticamente entre sessões.'
-      : 'Este navegador não permite manter uma pasta "conectada" entre sessões (limitação do sistema, não do app) - por isso, ao adicionar a pasta, o app guarda uma cópia do áudio no armazenamento interno dele. Assim, a reprodução continua funcionando normalmente sempre, sem pedir a pasta de novo; use "Atualizar" só quando quiser detectar músicas novas que tenham sido adicionadas à pasta depois.';
+    if (supportsPersistentFolders()) {
+      supportNote.textContent = 'Este navegador mantém a pasta conectada automaticamente entre sessões.';
+    } else if (isAndroidNative()) {
+      supportNote.textContent = 'A pasta escolhida fica conectada automaticamente entre sessões, com permissão concedida pelo sistema Android - sem precisar escolher de novo. Use "Atualizar" quando quiser detectar músicas novas que tenham sido adicionadas à pasta depois.';
+    } else {
+      supportNote.textContent = 'Este navegador não permite manter uma pasta "conectada" entre sessões (limitação do sistema, não do app) - por isso, ao adicionar a pasta, o app guarda uma cópia do áudio no armazenamento interno dele. Assim, a reprodução continua funcionando normalmente sempre, sem pedir a pasta de novo; use "Atualizar" só quando quiser detectar músicas novas que tenham sido adicionadas à pasta depois.';
+    }
   }
 
   addBtn?.addEventListener('click', async () => {
